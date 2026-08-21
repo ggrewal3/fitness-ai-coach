@@ -22,33 +22,24 @@ return res.status(201).json(result.user);
 }
 
 export async function login(req: Request, res: Response) {
-
   try {
-
     const result = await loginUser(req.body);
 
     if (!result.success) {
-
       return res.status(401).json({
-
         message: result.message,
-
       });
-
     }
 
-    return res.status(200).json(result.user);
-
+    return res.status(200).json({
+      token: result.token,
+      user: result.user,
+    });
   } catch (error) {
-
     console.error(error);
 
     return res.status(500).json({
-
       message: "Internal Server Error",
-
     });
-
   }
-
 }

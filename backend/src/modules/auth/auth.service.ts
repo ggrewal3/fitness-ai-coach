@@ -1,6 +1,8 @@
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import prisma from "../../lib/prisma.js";
 import { RegisterUserInput, LoginUserInput } from "./auth.types.js";
+
 
 export async function registerUser(userData: RegisterUserInput) {
   const existingUser = await prisma.user.findUnique({
@@ -54,26 +56,27 @@ export async function loginUser(userData: LoginUserInput) {
 );
 if (!isPasswordCorrect) {
   return {
-    success: false,
-    message: "Invalid email or password.",
-  };
+  success: false as const,
+  message: "Invalid email or password.",
+};
 }
+const token = jwt.sign(
+  {
+    userId: user.id,
+  },
+  process.env.JWT_SECRET!,
+  {
+    expiresIn: "1h",
+  }
+);
   return {
-
-    success: true,
-
-    user: {
-
-      id: user.id,
-
-      firstName: user.firstName,
-
-      lastName: user.lastName,
-
-      email: user.email,
-
-    },
-
-  };
-
+  success: true as const,
+  token,
+  user: {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+  },
+};
 }

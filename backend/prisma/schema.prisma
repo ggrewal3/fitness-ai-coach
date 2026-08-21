@@ -1,6 +1,3 @@
-// Prisma Schema
-// AI Fitness Coach
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -8,7 +5,28 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  
+}
+
+enum FitnessGoal {
+  LOSE_FAT
+  MAINTAIN
+  GAIN_MUSCLE
+}
+
+enum ActivityLevel {
+  SEDENTARY
+  LIGHT
+  MODERATE
+  ACTIVE
+  VERY_ACTIVE
+}
+
+enum DietPreference {
+  NO_PREFERENCE
+  VEGETARIAN
+  VEGAN
+  PESCATARIAN
+  HALAL
 }
 
 model User {
@@ -19,4 +37,26 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  profile      FitnessProfile?
+}
+
+model FitnessProfile {
+  id                Int             @id @default(autoincrement())
+  userId            Int             @unique
+
+  dateOfBirth       DateTime?
+  heightCm          Float?
+  targetWeightKg    Float?
+
+  goal              FitnessGoal?
+  activityLevel     ActivityLevel?
+  dietPreference    DietPreference?
+
+  medicalNotes      String?
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
