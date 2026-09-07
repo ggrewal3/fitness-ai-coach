@@ -5,6 +5,7 @@ import { createUser } from "./modules/users/user.service.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import { authMiddleware } from "./middleware/auth.middleware.js";
 import profileRoutes from "./modules/profile/profile.routes.js";
+import checkinRoutes from "./modules/checkins/checkin.routes.js";
 
 dotenv.config();
 
@@ -15,6 +16,7 @@ app.use(cors());
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/checkins", checkinRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.status(200).json({

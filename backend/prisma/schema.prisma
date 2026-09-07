@@ -38,7 +38,8 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  profile      FitnessProfile?
+  profile        FitnessProfile?
+  weightCheckIns WeightCheckIn[]
 }
 
 model FitnessProfile {
@@ -59,4 +60,17 @@ model FitnessProfile {
   updatedAt         DateTime        @updatedAt
 
   user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WeightCheckIn {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  weightKg   Float
+  recordedAt DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, recordedAt])
 }

@@ -27,6 +27,14 @@ export async function registerUser(userData: RegisterUserInput) {
       email: userData.email,
       passwordHash: hashedPassword,
     },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
   return {
