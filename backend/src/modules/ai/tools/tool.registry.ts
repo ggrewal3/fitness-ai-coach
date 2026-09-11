@@ -1,6 +1,11 @@
 import { getUserProfileTool } from "./get-user-profile.tool.js";
+import { getWeightHistoryTool } from "./get-weight-history.tool.js";
+import type { ToolDefinition } from "./tool.types.js";
 
-const tools = [getUserProfileTool] as const;
+const tools: ToolDefinition<unknown, unknown>[] = [
+  getUserProfileTool,
+  getWeightHistoryTool,
+];
 
 export function getRegisteredTools() {
   return tools;
