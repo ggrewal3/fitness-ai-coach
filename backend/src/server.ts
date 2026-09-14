@@ -7,6 +7,7 @@ import { authMiddleware } from "./middleware/auth.middleware.js";
 import profileRoutes from "./modules/profile/profile.routes.js";
 import checkinRoutes from "./modules/checkins/checkin.routes.js";
 import aiRoutes from "./modules/ai/ai.routes.js";
+import nutritionRoutes from "./modules/nutrition/nutrition.routes.js";
 
 dotenv.config();
 
@@ -19,6 +20,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/checkins", checkinRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/nutrition", nutritionRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.status(200).json({
