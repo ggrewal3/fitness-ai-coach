@@ -2,6 +2,7 @@ import { getActivityHistoryTool } from "./get-activity-history.tool.js";
 import { getNutritionHistoryTool } from "./get-nutrition-history.tool.js";
 import { getUserProfileTool } from "./get-user-profile.tool.js";
 import { getWeightHistoryTool } from "./get-weight-history.tool.js";
+import { getWorkoutHistoryTool } from "./get-workout-history.tool.js";
 import type { ToolDefinition } from "./tool.types.js";
 
 const tools: ToolDefinition<unknown, unknown>[] = [
@@ -9,6 +10,7 @@ const tools: ToolDefinition<unknown, unknown>[] = [
   getWeightHistoryTool,
   getNutritionHistoryTool,
   getActivityHistoryTool,
+  getWorkoutHistoryTool,
 ];
 
 export function getRegisteredTools() {

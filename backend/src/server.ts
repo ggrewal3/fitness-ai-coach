@@ -9,6 +9,7 @@ import checkinRoutes from "./modules/checkins/checkin.routes.js";
 import aiRoutes from "./modules/ai/ai.routes.js";
 import nutritionRoutes from "./modules/nutrition/nutrition.routes.js";
 import activityRoutes from "./modules/activity/activity.routes.js";
+import workoutRoutes from "./modules/workouts/workout.routes.js";
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ app.use("/api/checkins", checkinRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/nutrition", nutritionRoutes);
 app.use("/api/activity", activityRoutes);
+app.use("/api/workouts", workoutRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.status(200).json({
