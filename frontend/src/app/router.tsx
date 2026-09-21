@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom'
 
+import ProtectedRoute from '../components/auth/ProtectedRoute'
 import AppLayout from '../components/layout/AppLayout'
 import AICoachPage from '../pages/AICoachPage'
 import DashboardPage from '../pages/DashboardPage'
@@ -20,31 +21,36 @@ const router = createBrowserRouter([
     element: <SignupPage />,
   },
   {
-    element: <AppLayout />,
+    element: <ProtectedRoute />,
     children: [
       {
-        path: '/',
-        element: <DashboardPage />,
-      },
-      {
-        path: '/progress',
-        element: <ProgressPage />,
-      },
-      {
-        path: '/nutrition',
-        element: <NutritionPage />,
-      },
-      {
-        path: '/workout',
-        element: <WorkoutPage />,
-      },
-      {
-        path: '/ai-coach',
-        element: <AICoachPage />,
-      },
-      {
-        path: '/settings',
-        element: <SettingsPage />,
+        element: <AppLayout />,
+        children: [
+          {
+            path: '/',
+            element: <DashboardPage />,
+          },
+          {
+            path: '/progress',
+            element: <ProgressPage />,
+          },
+          {
+            path: '/nutrition',
+            element: <NutritionPage />,
+          },
+          {
+            path: '/workout',
+            element: <WorkoutPage />,
+          },
+          {
+            path: '/ai-coach',
+            element: <AICoachPage />,
+          },
+          {
+            path: '/settings',
+            element: <SettingsPage />,
+          },
+        ],
       },
     ],
   },
