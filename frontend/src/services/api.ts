@@ -183,3 +183,36 @@ export async function registerUser(
     body: JSON.stringify(credentials),
   })
 }
+
+export type WeightCheckIn = {
+  id: number
+  userId: number
+  weightKg: number
+  recordedAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateWeightCheckInInput = {
+  weightKg: number
+  recordedAt: string
+}
+
+export async function getWeightCheckIns(): Promise<WeightCheckIn[]> {
+  return request<WeightCheckIn[]>("/api/checkins")
+}
+
+export async function createWeightCheckIn(
+  input: CreateWeightCheckInInput,
+): Promise<WeightCheckIn> {
+  return request<WeightCheckIn>("/api/checkins", {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+}
+
+export async function deleteWeightCheckIn(id: number): Promise<void> {
+  await request<null>(`/api/checkins/${id}`, {
+    method: "DELETE",
+  })
+}
