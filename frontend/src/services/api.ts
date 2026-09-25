@@ -216,3 +216,111 @@ export async function deleteWeightCheckIn(id: number): Promise<void> {
     method: "DELETE",
   })
 }
+
+export type MealType = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK" | "OTHER"
+
+export type NutritionSource = "MANUAL" | "AI_TEXT" | "AI_PHOTO"
+
+export type NutritionFoodItem = {
+  id: number
+  foodName: string
+  quantity: number
+  unit: string
+  calories: number
+  proteinGrams: number
+  carbsGrams: number
+  fatGrams: number
+  mealType: MealType
+  source: NutritionSource
+  entryDate: string
+  recordedAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateNutritionFoodItemInput = {
+  foodName: string
+  quantity: number
+  unit: string
+  calories: number
+  proteinGrams: number
+  carbsGrams: number
+  fatGrams: number
+  mealType: MealType
+  source?: NutritionSource
+  entryDate: string
+  recordedAt: string
+}
+
+export type UpdateNutritionFoodItemInput = Partial<CreateNutritionFoodItemInput>
+
+export type DailyNutritionSummary = {
+  entryDate: string
+  found: boolean
+  totalCalories: number
+  totalProteinGrams: number
+  totalCarbsGrams: number
+  totalFatGrams: number
+  numberOfFoodItems: number
+}
+
+export type NutritionEstimateRequest = {
+  foodName: string
+  quantity: number
+  unit: string
+}
+
+export type NutritionEstimateResult = {
+  foodName: string
+  quantity: number
+  unit: string
+  calories: number
+  proteinGrams: number
+  carbsGrams: number
+  fatGrams: number
+  note: string | null
+}
+
+export async function getNutritionFoodItems(): Promise<NutritionFoodItem[]> {
+  return request<NutritionFoodItem[]>("/api/nutrition")
+}
+
+export async function createNutritionFoodItem(
+  input: CreateNutritionFoodItemInput,
+): Promise<NutritionFoodItem> {
+  return request<NutritionFoodItem>("/api/nutrition", {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateNutritionFoodItem(
+  id: number,
+  input: UpdateNutritionFoodItemInput,
+): Promise<NutritionFoodItem> {
+  return request<NutritionFoodItem>(`/api/nutrition/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  })
+}
+
+export async function deleteNutritionFoodItem(id: number): Promise<void> {
+  await request<null>(`/api/nutrition/${id}`, {
+    method: "DELETE",
+  })
+}
+
+export async function getDailyNutritionSummary(
+  date: string,
+): Promise<DailyNutritionSummary> {
+  return request<DailyNutritionSummary>(`/api/nutrition/summary/${date}`)
+}
+
+export async function estimateNutrition(
+  input: NutritionEstimateRequest,
+): Promise<NutritionEstimateResult> {
+  return request<NutritionEstimateResult>("/api/ai/nutrition/estimate", {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+}
