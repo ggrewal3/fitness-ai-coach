@@ -35,6 +35,20 @@ enum ActivitySource {
   HEALTH_CONNECT
 }
 
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+  OTHER
+}
+
+enum NutritionSource {
+  MANUAL
+  AI_TEXT
+  AI_PHOTO
+}
+
 enum TrainingType {
   STRENGTH
   CARDIO
@@ -54,7 +68,7 @@ model User {
 
   profile        FitnessProfile?
   weightCheckIns WeightCheckIn[]
-  nutritionEntries NutritionEntry[]
+  nutritionFoodItems NutritionFoodItem[]
   dailyActivities DailyActivity[]
   workoutSessions WorkoutSession[]
 }
@@ -92,21 +106,26 @@ model WeightCheckIn {
   @@index([userId, recordedAt])
 }
 
-model NutritionEntry {
-  id            Int      @id @default(autoincrement())
-  userId        Int
-  entryDate     DateTime @db.Date
-  calories      Int
-  proteinGrams  Float
-  carbsGrams    Float
-  fatGrams      Float
-  recordedAt    DateTime
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+model NutritionFoodItem {
+  id           Int             @id @default(autoincrement())
+  userId       Int
+  foodName     String
+  quantity     Float
+  unit         String
+  calories     Int
+  proteinGrams Float
+  carbsGrams   Float
+  fatGrams     Float
+  mealType     MealType
+  source       NutritionSource @default(MANUAL)
+  entryDate    DateTime        @db.Date
+  recordedAt   DateTime
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, entryDate])
+  @@index([userId, entryDate])
   @@index([userId, recordedAt])
 }
 

@@ -1,26 +1,47 @@
+import type { MealType, NutritionSource } from "../../generated/prisma/client.js";
 import { z } from "zod";
 import {
-  createNutritionEntrySchema,
-  updateNutritionEntrySchema,
+  createNutritionFoodItemSchema,
+  updateNutritionFoodItemSchema,
 } from "./nutrition.schemas.js";
 
-export type CreateNutritionEntryInput = z.infer<
-  typeof createNutritionEntrySchema
+export type CreateNutritionFoodItemInput = z.infer<
+  typeof createNutritionFoodItemSchema
 >;
 
-export type UpdateNutritionEntryInput = z.infer<
-  typeof updateNutritionEntrySchema
+export type UpdateNutritionFoodItemInput = z.infer<
+  typeof updateNutritionFoodItemSchema
 >;
 
-export interface NutritionEntryResponse {
+export interface NutritionFoodItemResponse {
   id: number;
+  foodName: string;
+  quantity: number;
+  unit: string;
   calories: number;
   proteinGrams: number;
   carbsGrams: number;
   fatGrams: number;
+  mealType: MealType;
+  source: NutritionSource;
+  entryDate: Date;
   recordedAt: Date;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// Derived aggregate for a single logical nutrition day - never stored, always
+// computed from NutritionFoodItem rows. `found` is false when no food items
+// were logged for entryDate; totals are 0 in that case and must be read as
+// "no data", not as zero calories actually consumed.
+export interface DailyNutritionSummary {
+  entryDate: string;
+  found: boolean;
+  totalCalories: number;
+  totalProteinGrams: number;
+  totalCarbsGrams: number;
+  totalFatGrams: number;
+  numberOfFoodItems: number;
 }
 
 export interface NutritionHistoryEntry {

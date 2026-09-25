@@ -2,14 +2,15 @@ import { Router } from "express";
 import { authMiddleware } from "../../middleware/auth.middleware.js";
 import { validateBody } from "../../middleware/validate.middleware.js";
 import {
-  createNutrition,
-  deleteNutrition,
-  getNutrition,
-  updateNutrition,
+  createFoodItem,
+  deleteFoodItem,
+  getFoodItems,
+  getSummary,
+  updateFoodItem,
 } from "./nutrition.controller.js";
 import {
-  createNutritionEntrySchema,
-  updateNutritionEntrySchema,
+  createNutritionFoodItemSchema,
+  updateNutritionFoodItemSchema,
 } from "./nutrition.schemas.js";
 
 const router = Router();
@@ -17,19 +18,21 @@ const router = Router();
 router.post(
   "/",
   authMiddleware,
-  validateBody(createNutritionEntrySchema),
-  createNutrition
+  validateBody(createNutritionFoodItemSchema),
+  createFoodItem
 );
 
-router.get("/", authMiddleware, getNutrition);
+router.get("/", authMiddleware, getFoodItems);
+
+router.get("/summary/:date", authMiddleware, getSummary);
 
 router.patch(
   "/:id",
   authMiddleware,
-  validateBody(updateNutritionEntrySchema),
-  updateNutrition
+  validateBody(updateNutritionFoodItemSchema),
+  updateFoodItem
 );
 
-router.delete("/:id", authMiddleware, deleteNutrition);
+router.delete("/:id", authMiddleware, deleteFoodItem);
 
 export default router;

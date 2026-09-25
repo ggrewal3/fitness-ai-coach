@@ -1,28 +1,29 @@
 import type { Response } from "express";
 import type { AuthenticatedRequest } from "../../types/auth.types.js";
+import { nutritionSummaryDateParamSchema } from "./nutrition.schemas.js";
 import {
-  createNutritionEntry,
-  deleteNutritionEntry,
-  getNutritionEntries,
-  NutritionEntryConflictError,
-  updateNutritionEntry,
+  createNutritionFoodItem,
+  deleteNutritionFoodItem,
+  getDailyNutritionSummary,
+  getNutritionFoodItems,
+  updateNutritionFoodItem,
 } from "./nutrition.service.js";
 import type {
-  CreateNutritionEntryInput,
-  UpdateNutritionEntryInput,
+  CreateNutritionFoodItemInput,
+  UpdateNutritionFoodItemInput,
 } from "./nutrition.types.js";
 
-function parseNutritionEntryId(value: string | string[]): number | null {
+function parseFoodItemId(value: string | string[]): number | null {
   if (typeof value !== "string") {
     return null;
   }
 
-  const entryId = Number(value);
+  const itemId = Number(value);
 
-  return Number.isInteger(entryId) && entryId > 0 ? entryId : null;
+  return Number.isInteger(itemId) && itemId > 0 ? itemId : null;
 }
 
-export async function createNutrition(
+export async function createFoodItem(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -33,19 +34,13 @@ export async function createNutrition(
       });
     }
 
-    const entry = await createNutritionEntry(
+    const item = await createNutritionFoodItem(
       req.userId,
-      req.body as CreateNutritionEntryInput
+      req.body as CreateNutritionFoodItemInput
     );
 
-    return res.status(201).json(entry);
+    return res.status(201).json(item);
   } catch (error) {
-    if (error instanceof NutritionEntryConflictError) {
-      return res.status(409).json({
-        message: error.message,
-      });
-    }
-
     console.error({ event: "nutrition.create.failed" });
 
     return res.status(500).json({
@@ -54,7 +49,7 @@ export async function createNutrition(
   }
 }
 
-export async function getNutrition(
+export async function getFoodItems(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -65,9 +60,9 @@ export async function getNutrition(
       });
     }
 
-    const entries = await getNutritionEntries(req.userId);
+    const items = await getNutritionFoodItems(req.userId);
 
-    return res.status(200).json(entries);
+    return res.status(200).json(items);
   } catch (error) {
     console.error({ event: "nutrition.get.failed" });
 
@@ -77,7 +72,7 @@ export async function getNutrition(
   }
 }
 
-export async function updateNutrition(
+export async function getSummary(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -88,34 +83,64 @@ export async function updateNutrition(
       });
     }
 
-    const entryId = parseNutritionEntryId(req.params.id);
-
-    if (!entryId) {
-      return res.status(400).json({
-        message: "Invalid nutrition entry ID.",
-      });
-    }
-
-    const entry = await updateNutritionEntry(
-      req.userId,
-      entryId,
-      req.body as UpdateNutritionEntryInput
+    const parsedDate = nutritionSummaryDateParamSchema.safeParse(
+      req.params.date
     );
 
-    if (!entry) {
-      return res.status(404).json({
-        message: "Nutrition entry not found.",
+    if (!parsedDate.success) {
+      return res.status(400).json({
+        message: "Invalid date. Use YYYY-MM-DD.",
       });
     }
 
-    return res.status(200).json(entry);
+    const summary = await getDailyNutritionSummary(
+      req.userId,
+      parsedDate.data
+    );
+
+    return res.status(200).json(summary);
   } catch (error) {
-    if (error instanceof NutritionEntryConflictError) {
-      return res.status(409).json({
-        message: error.message,
+    console.error({ event: "nutrition.summary.failed" });
+
+    return res.status(500).json({
+      message: "Internal Server Error",
+    });
+  }
+}
+
+export async function updateFoodItem(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({
+        message: "Authentication required.",
       });
     }
 
+    const itemId = parseFoodItemId(req.params.id);
+
+    if (!itemId) {
+      return res.status(400).json({
+        message: "Invalid nutrition food item ID.",
+      });
+    }
+
+    const item = await updateNutritionFoodItem(
+      req.userId,
+      itemId,
+      req.body as UpdateNutritionFoodItemInput
+    );
+
+    if (!item) {
+      return res.status(404).json({
+        message: "Nutrition food item not found.",
+      });
+    }
+
+    return res.status(200).json(item);
+  } catch (error) {
     console.error({ event: "nutrition.update.failed" });
 
     return res.status(500).json({
@@ -124,7 +149,7 @@ export async function updateNutrition(
   }
 }
 
-export async function deleteNutrition(
+export async function deleteFoodItem(
   req: AuthenticatedRequest,
   res: Response
 ) {
@@ -135,19 +160,19 @@ export async function deleteNutrition(
       });
     }
 
-    const entryId = parseNutritionEntryId(req.params.id);
+    const itemId = parseFoodItemId(req.params.id);
 
-    if (!entryId) {
+    if (!itemId) {
       return res.status(400).json({
-        message: "Invalid nutrition entry ID.",
+        message: "Invalid nutrition food item ID.",
       });
     }
 
-    const deleted = await deleteNutritionEntry(req.userId, entryId);
+    const deleted = await deleteNutritionFoodItem(req.userId, itemId);
 
     if (!deleted) {
       return res.status(404).json({
-        message: "Nutrition entry not found.",
+        message: "Nutrition food item not found.",
       });
     }
 
