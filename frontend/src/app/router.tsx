@@ -9,6 +9,7 @@ import NutritionPage from '../pages/NutritionPage'
 import ProgressPage from '../pages/ProgressPage'
 import SettingsPage from '../pages/SettingsPage'
 import SignupPage from '../pages/SignupPage'
+import WorkoutEditorPage from '../pages/WorkoutEditorPage'
 import WorkoutPage from '../pages/WorkoutPage'
 
 const router = createBrowserRouter([
@@ -41,6 +42,14 @@ const router = createBrowserRouter([
           {
             path: '/workout',
             element: <WorkoutPage />,
+          },
+          {
+            path: '/workout/new',
+            element: <WorkoutEditorPage />,
+          },
+          {
+            path: '/workout/:id/edit',
+            element: <WorkoutEditorPage />,
           },
           {
             path: '/ai-coach',

@@ -324,3 +324,158 @@ export async function estimateNutrition(
     body: JSON.stringify(input),
   })
 }
+
+export type TrainingType = "STRENGTH" | "CARDIO" | "MOBILITY" | "SPORT" | "OTHER"
+
+export type LoadUnit = "KG" | "LB"
+
+export type Exercise = {
+  id: number
+  name: string
+  isCustom: boolean
+}
+
+export type FindOrCreateExerciseResult = {
+  exercise: Exercise
+  created: boolean
+}
+
+export type WorkoutSet = {
+  id: number
+  position: number
+  reps: number
+  load: number | null
+  loadUnit: LoadUnit | null
+}
+
+export type WorkoutExercise = {
+  id: number
+  position: number
+  exercise: Exercise
+  sets: WorkoutSet[]
+}
+
+type WorkoutSessionFields = {
+  id: number
+  title: string
+  workoutDate: string
+  trainingType: TrainingType
+  durationMinutes: number
+  notes: string | null
+  recordedAt: string
+}
+
+export type WorkoutDetail = WorkoutSessionFields & {
+  exercises: WorkoutExercise[]
+}
+
+export type WorkoutSummary = WorkoutSessionFields & {
+  exerciseCount: number
+  setCount: number
+}
+
+export type WorkoutSetInput = {
+  reps: number
+  load: number | null
+  loadUnit: LoadUnit | null
+}
+
+export type WorkoutExerciseInput = {
+  exerciseId: number
+  sets: WorkoutSetInput[]
+}
+
+export type CreateWorkoutInput = {
+  title: string
+  workoutDate: string
+  trainingType: TrainingType
+  durationMinutes: number
+  notes?: string
+  recordedAt: string
+  exercises: WorkoutExerciseInput[]
+}
+
+export type UpdateWorkoutInput = {
+  title?: string
+  workoutDate?: string
+  trainingType?: TrainingType
+  durationMinutes?: number
+  notes?: string | null
+  exercises?: WorkoutExerciseInput[]
+}
+
+export type WorkoutListQuery = {
+  from?: string
+  to?: string
+  limit?: number
+}
+
+export async function getExercises(
+  search: string,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<Exercise[]> {
+  const params = new URLSearchParams({ search, limit: String(limit) })
+
+  return request<Exercise[]>(`/api/exercises?${params.toString()}`, { signal })
+}
+
+export async function createExercise(
+  name: string,
+): Promise<FindOrCreateExerciseResult> {
+  return request<FindOrCreateExerciseResult>("/api/exercises", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  })
+}
+
+export async function getWorkouts(
+  query: WorkoutListQuery = {},
+): Promise<WorkoutSummary[]> {
+  const params = new URLSearchParams()
+
+  if (query.from) params.set("from", query.from)
+  if (query.to) params.set("to", query.to)
+  if (query.limit !== undefined) params.set("limit", String(query.limit))
+
+  const queryString = params.toString()
+
+  return request<WorkoutSummary[]>(
+    `/api/workouts${queryString ? `?${queryString}` : ""}`,
+  )
+}
+
+export async function getWorkoutsForDate(
+  workoutDate: string,
+): Promise<WorkoutDetail[]> {
+  return request<WorkoutDetail[]>(`/api/workouts/date/${workoutDate}`)
+}
+
+export async function getWorkout(id: number): Promise<WorkoutDetail> {
+  return request<WorkoutDetail>(`/api/workouts/${id}`)
+}
+
+export async function createWorkout(
+  input: CreateWorkoutInput,
+): Promise<WorkoutDetail> {
+  return request<WorkoutDetail>("/api/workouts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateWorkout(
+  id: number,
+  input: UpdateWorkoutInput,
+): Promise<WorkoutDetail> {
+  return request<WorkoutDetail>(`/api/workouts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  })
+}
+
+export async function deleteWorkout(id: number): Promise<void> {
+  await request<null>(`/api/workouts/${id}`, {
+    method: "DELETE",
+  })
+}
