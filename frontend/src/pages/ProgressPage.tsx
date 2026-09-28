@@ -222,7 +222,7 @@ function ProgressPage() {
             {checkIns.map((checkIn) => (
               <li key={checkIn.id} className="checkin-item">
                 <span className="checkin-weight">{checkIn.weightKg} kg</span>
-                <span className="header-label">
+                <span className="header-label checkin-date">
                   {formatRecordedAt(checkIn.recordedAt)}
                 </span>
                 <button

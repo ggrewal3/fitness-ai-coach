@@ -169,6 +169,9 @@ select {
 .progress-page {
   display: grid;
   gap: 24px;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
 }
 
 .progress-card {
@@ -928,6 +931,38 @@ select {
 
   .modal-panel {
     padding: 20px;
+  }
+
+  .checkin-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "weight delete"
+      "date delete";
+    align-items: center;
+    gap: 2px 12px;
+  }
+
+  .checkin-weight {
+    grid-area: weight;
+    min-width: 0;
+  }
+
+  .checkin-date {
+    grid-area: date;
+    min-width: 0;
+    font-size: 0.875rem;
+  }
+
+  .checkin-delete {
+    grid-area: delete;
+    min-height: 40px;
+  }
+
+  /* Let native controls (notably datetime-local) shrink below their
+     intrinsic width on very narrow screens. */
+  .checkin-form input {
+    min-width: 0;
   }
 }
 
