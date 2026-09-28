@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import FitAIMark from '../brand/FitAIMark'
 
 const navigationItems = [
   { label: 'Dashboard', path: '/' },
@@ -12,7 +13,10 @@ const navigationItems = [
 function Sidebar() {
   return (
     <aside className="sidebar">
-      <h2>FitAI Coach</h2>
+      <h2 className="sidebar-brand">
+        <FitAIMark size={30} />
+        <span>FitAI Coach</span>
+      </h2>
 
       <nav>
         {navigationItems.map((item) => (

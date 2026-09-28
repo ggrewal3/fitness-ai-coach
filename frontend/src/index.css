@@ -36,6 +36,16 @@ select {
   color: white;
 }
 
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-brand svg {
+  flex: none;
+}
+
 .sidebar nav {
   display: flex;
   flex-direction: column;
