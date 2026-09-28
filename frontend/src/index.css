@@ -765,6 +765,101 @@ select {
   cursor: not-allowed;
 }
 
+.dashboard-page {
+  display: grid;
+  gap: 24px;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.dashboard-title {
+  margin: 0;
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.dashboard-column {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.dashboard-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+.dashboard-weight {
+  display: grid;
+  gap: 16px;
+}
+
+.dashboard-card-text {
+  margin: 0;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.dashboard-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.dashboard-primary-button,
+.dashboard-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+
+.dashboard-primary-button {
+  color: white;
+  background: #2563eb;
+  border: 0;
+}
+
+.dashboard-primary-button:hover {
+  background: #1d4ed8;
+}
+
+.dashboard-secondary-button {
+  color: #334155;
+  background: white;
+  border: 1px solid #cbd5e1;
+}
+
+.dashboard-secondary-button:hover {
+  background: #f8fafc;
+}
+
+.dashboard-quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 @media (max-width: 1100px) {
   .nutrition-layout {
     grid-template-columns: 1fr;
@@ -821,5 +916,36 @@ select {
 
   .modal-panel {
     padding: 20px;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Single column: flatten both columns so cards read nutrition, weight,
+     coach, then quick actions. */
+  .dashboard-column {
+    display: contents;
+  }
+
+  .dashboard-quick-actions {
+    order: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-page,
+  .dashboard-grid {
+    gap: 16px;
+  }
+
+  .dashboard-card {
+    padding: 20px;
+  }
+
+  .dashboard-card-actions > * {
+    flex: 1 1 auto;
   }
 }
