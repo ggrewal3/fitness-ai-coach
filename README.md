@@ -12,6 +12,8 @@ Instead of acting as a generic chatbot, the AI Coach can reason over structured 
 - Daily nutrition tracking for calories and macronutrients
 - Daily activity tracking for steps, walking distance, and active calories
 - Workout session tracking for strength, cardio, mobility, sport, and other training
+- Structured workout logging: ordered exercises with sets, reps, and optional load (kg or lb)
+- Exercise catalogue with built-in FitAI exercises, private custom exercises, and deterministic search
 - Structured AI Coach responses
 - Read-only AI tool calling over authenticated user data
 - Multi-domain AI reasoning across profile, weight, nutrition, activity, and workouts
@@ -175,12 +177,15 @@ Workouts are modeled as events rather than daily aggregates.
 
 This allows multiple workouts to exist on the same day.
 
-Each workout currently stores:
+Each workout session stores:
 
+- Title (for example "Push Day")
+- Workout date (`workoutDate`, the logical training day, like Nutrition's `entryDate`)
 - Training type
 - Duration
 - Optional notes
 - Recorded timestamp
+- Ordered exercises, each with ordered sets
 
 Supported training types include:
 
@@ -190,7 +195,39 @@ Supported training types include:
 - Sport
 - Other
 
-Exercise-level sets, reps, loads, personal records, and progressive-overload analytics are intentionally outside the current V1 scope.
+Each set stores reps and an optional load with its unit (`KG` or `LB`). The load is stored exactly as entered and never converted; an empty load represents a bodyweight set. Exercises and sets are ordered by server-assigned positions, and editing a workout's exercises replaces them transactionally.
+
+A session may have no exercises, which covers cardio or other session-only workouts.
+
+### Exercise Catalogue
+
+Workouts reference exercises by a stable Exercise ID rather than free text:
+
+- **Built-in exercises** (`userId = null`) are provided by FitAI, visible to everyone, and seeded idempotently by a stable `builtInKey`. They cannot be created, modified, or deleted through the API.
+- **Custom exercises** (`userId = <owner>`) are private to the user who created them.
+
+Names are normalized for matching (case, whitespace, hyphens/underscores, and apostrophes are ignored), so `" Bench   Press "` and `"bench press"` are the same exercise. Creating a custom exercise that matches a built-in or an existing custom exercise returns that exercise instead of a duplicate.
+
+Search is conventional and deterministic: exact matches rank first, then whole-query prefixes, word prefixes, and substring matches, with alphabetical tie-breaking. An empty query returns one alphabetical list.
+
+Timed or distance sets, RPE, muscle groups, equipment metadata, personal records, and progressive-overload analytics are not implemented yet. The AI workout tool still reads session-level workout data only.
+
+### Workout and Exercise API
+
+All endpoints require a JWT and only ever act on the authenticated user's data.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/exercises?search=&limit=` | Search built-in and your own custom exercises |
+| `POST` | `/api/exercises` | Find or create a private custom exercise (`201` created, `200` existing) |
+| `POST` | `/api/workouts` | Create a workout with nested exercises and sets |
+| `GET` | `/api/workouts?from=&to=&limit=` | List workout summaries, newest first |
+| `GET` | `/api/workouts/:id` | Get one workout with exercises and sets |
+| `GET` | `/api/workouts/date/:date` | Get workouts for a `YYYY-MM-DD` workout date |
+| `PATCH` | `/api/workouts/:id` | Update fields; `exercises` (if present) replaces all exercises and sets |
+| `DELETE` | `/api/workouts/:id` | Delete a workout with its exercises and sets |
+
+`POST /api/workouts` requires `title` and `workoutDate`.
 
 ## Deterministic Analytics
 
@@ -348,7 +385,13 @@ fitness-ai-coach/
 ├── backend/
 │   ├── prisma/
 │   │   ├── schema.prisma
+│   │   ├── seed.ts
 │   │   └── migrations/
+│   │
+│   ├── scripts/
+│   │   └── run-tests.mjs
+│   │
+│   ├── test/
 │   │
 │   └── src/
 │       ├── middleware/
@@ -359,8 +402,10 @@ fitness-ai-coach/
 │       │   ├── nutrition/
 │       │   ├── activity/
 │       │   ├── workouts/
+│       │   ├── exercises/
 │       │   └── ai/
 │       ├── types/
+│       ├── app.ts
 │       └── server.ts
 │
 ├── nginx/
@@ -368,6 +413,27 @@ fitness-ai-coach/
 ├── docs/
 └── docker-compose.yml
 ```
+
+## Backend Development
+
+Seed the built-in exercise catalogue after applying migrations (safe to run repeatedly):
+
+```bash
+cd backend
+npx prisma migrate deploy
+npm run db:seed
+```
+
+### Automated Tests
+
+Backend tests use Node's built-in test runner and must run against a separate PostgreSQL database. Provide its connection string through the `TEST_DATABASE_URL` environment variable; do not commit it or add it to `.env`.
+
+```bash
+cd backend
+TEST_DATABASE_URL="postgresql://..." npm test
+```
+
+The runner refuses to start if `TEST_DATABASE_URL` is missing or points at the development database. It applies migrations and seeds the catalogue before running `test/**/*.test.ts`. `npm run typecheck` type-checks the source and tests.
 
 ## Development Principles
 
@@ -414,6 +480,8 @@ Completed backend verticals:
 - Workout Tracking
 - Workout Analytics
 - Workout AI Tool
+- Structured Workout Data (exercise catalogue, exercises, sets)
+- Automated Backend Tests (exercises and workouts)
 - Structured AI Coach Responses
 - Multi-Tool AI Orchestration
 
@@ -437,7 +505,7 @@ The frontend contains the main application routes and shared layout, while deepe
 - Build user-facing fitness tracking workflows
 - Build the frontend AI Coach experience
 - Add progress and photo workflows
-- Add automated testing
+- Expand automated test coverage
 - Improve production security and error handling
 - Add AI evaluation and observability
 - Add a small vetted fitness-knowledge retrieval layer (RAG)
@@ -447,8 +515,8 @@ The frontend contains the main application routes and shared layout, while deepe
 
 - Apple HealthKit integration
 - Android Health Connect integration
-- Exercise-level tracking
-- Sets, reps, and load tracking
+- Workout frontend with exercise autocomplete
+- Timed and distance sets
 - Progressive-overload analytics
 - More advanced AI memory and personalization
 

@@ -4,7 +4,9 @@ import { validateBody } from "../../middleware/validate.middleware.js";
 import {
   createWorkout,
   deleteWorkout,
+  getWorkout,
   getWorkouts,
+  getWorkoutsForDate,
   updateWorkout,
 } from "./workout.controller.js";
 import {
@@ -22,6 +24,11 @@ router.post(
 );
 
 router.get("/", authMiddleware, getWorkouts);
+
+// Declared before "/:id" so "date" is never treated as a workout ID.
+router.get("/date/:date", authMiddleware, getWorkoutsForDate);
+
+router.get("/:id", authMiddleware, getWorkout);
 
 router.patch(
   "/:id",
