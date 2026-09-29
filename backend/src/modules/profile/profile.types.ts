@@ -1,39 +1,10 @@
-export interface CreateFitnessProfileInput {
-  dateOfBirth?: string;
-  heightCm?: number;
-  targetWeightKg?: number;
-  goal?: "LOSE_FAT" | "MAINTAIN" | "GAIN_MUSCLE";
-  activityLevel?:
-    | "SEDENTARY"
-    | "LIGHT"
-    | "MODERATE"
-    | "ACTIVE"
-    | "VERY_ACTIVE";
-  dietPreference?:
-    | "NO_PREFERENCE"
-    | "VEGETARIAN"
-    | "VEGAN"
-    | "PESCATARIAN"
-    | "HALAL";
-  medicalNotes?: string;
-}
+import type { z } from "zod";
+import type {
+  createFitnessProfileSchema,
+  updateFitnessProfileSchema,
+} from "./profile.schemas.js";
 
-export interface UpdateFitnessProfileInput {
-  dateOfBirth?: string;
-  heightCm?: number;
-  targetWeightKg?: number;
-  goal?: "LOSE_FAT" | "MAINTAIN" | "GAIN_MUSCLE";
-  activityLevel?:
-    | "SEDENTARY"
-    | "LIGHT"
-    | "MODERATE"
-    | "ACTIVE"
-    | "VERY_ACTIVE";
-  dietPreference?:
-    | "NO_PREFERENCE"
-    | "VEGETARIAN"
-    | "VEGAN"
-    | "PESCATARIAN"
-    | "HALAL";
-  medicalNotes?: string;
-}
+// Validated (post-transform) input: dateOfBirth is already a Date, blank
+// medicalNotes are null, and null clears a field.
+export type CreateFitnessProfileInput = z.output<typeof createFitnessProfileSchema>;
+export type UpdateFitnessProfileInput = z.output<typeof updateFitnessProfileSchema>;

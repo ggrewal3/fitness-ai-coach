@@ -57,10 +57,7 @@ export async function createMyFitnessProfile(
     data: {
       userId,
 
-      dateOfBirth: profileData.dateOfBirth
-        ? new Date(profileData.dateOfBirth)
-        : undefined,
-
+      dateOfBirth: profileData.dateOfBirth,
       heightCm: profileData.heightCm,
       targetWeightKg: profileData.targetWeightKg,
       goal: profileData.goal,
@@ -99,10 +96,8 @@ export async function updateMyFitnessProfile(
     },
 
     data: {
-      dateOfBirth: profileData.dateOfBirth
-        ? new Date(profileData.dateOfBirth)
-        : undefined,
-
+      // undefined leaves a field unchanged; null clears it.
+      dateOfBirth: profileData.dateOfBirth,
       heightCm: profileData.heightCm,
       targetWeightKg: profileData.targetWeightKg,
       goal: profileData.goal,

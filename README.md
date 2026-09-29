@@ -7,7 +7,8 @@ Instead of acting as a generic chatbot, the AI Coach can reason over structured 
 ## Current Capabilities
 
 - User registration and login with JWT authentication and bcrypt password hashing
-- Protected fitness profile management
+- Protected fitness profile management with validated fields
+- Account settings: contact details, bio, and body-weight/workout-load/height unit preferences
 - Weight check-ins with deterministic weight-history analytics
 - Daily nutrition tracking for calories and macronutrients
 - Daily activity tracking for steps, walking distance, and active calories
@@ -144,7 +145,48 @@ Deterministic calculations such as averages, totals, and weight changes are also
 
 ### Fitness Profile
 
-Stores the user's current fitness context and goals.
+Stores the user's current fitness context and goals. `POST /api/profile` and `PATCH /api/profile/me` validate every field with strict Zod schemas (unknown fields, including `userId`, are rejected with a structured `400`):
+
+| Field | Rule |
+| --- | --- |
+| `dateOfBirth` | Calendar date `YYYY-MM-DD`, in the past, user at least 13 (and at most 120) years old |
+| `heightCm` | Number, 50–275 |
+| `targetWeightKg` | Number, 20–400 |
+| `goal` | `LOSE_FAT`, `MAINTAIN`, `GAIN_MUSCLE` |
+| `activityLevel` | `SEDENTARY`, `LIGHT`, `MODERATE`, `ACTIVE`, `VERY_ACTIVE` |
+| `dietPreference` | `NO_PREFERENCE`, `VEGETARIAN`, `VEGAN`, `PESCATARIAN`, `HALAL` |
+| `medicalNotes` | Trimmed, at most 2000 characters, blank becomes `null` |
+
+`POST` accepts any subset (including none) and returns `409` if a profile already exists. `PATCH` accepts any subset but requires at least one field; `null` clears a field. `medicalNotes` is never passed to the AI Coach.
+
+### Account and Preferences
+
+The account belongs to the authenticated user only; every route requires a JWT and identifies the user from the token.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/account` | Identity, contact details, bio, `createdAt`, and unit preferences |
+| `PATCH` | `/api/account/profile` | Update `firstName`, `lastName`, `phone`, `countryCode`, `bio` |
+| `PATCH` | `/api/account/preferences` | Update `bodyWeightUnit`, `workoutLoadUnit`, `heightUnit` |
+
+Both `PATCH` routes accept any subset of their fields, require at least one, and reject unknown fields. Email is read-only: it cannot be changed through `PATCH /api/account/profile`.
+
+Account field rules:
+
+- `firstName` / `lastName`: trimmed, 1–50 characters.
+- `phone`: optional contact detail (no SMS verification, not unique). Spaces, hyphens, periods, and parentheses are removed, and the result must be E.164-style (`^\+[1-9]\d{7,14}$`), e.g. `+1 (415) 555-0100` is stored as `+14155550100`. Blank becomes `null`.
+- `countryCode`: ISO 3166-1 alpha-2 code, upper-cased before storage and validated against the officially assigned codes in `countryCodes.ts`. Blank becomes `null`. The country never changes unit preferences.
+- `bio`: plain text, trimmed, at most 500 characters; blank becomes `null`. Line breaks (normalized to `\n`) and tabs are kept; other control characters are rejected. It is never interpreted as HTML and is not sent to the AI Coach.
+
+Unit preferences are stored in an optional one-to-one `UserPreference` row. A user without a row gets the defaults, and reading the account never creates one; the first preferences `PATCH` does (upsert).
+
+| Preference | Values | Default |
+| --- | --- | --- |
+| `bodyWeightUnit` | `KG`, `LB` | `KG` |
+| `workoutLoadUnit` | `KG`, `LB` | `LB` |
+| `heightUnit` | `CM`, `FT_IN` | `CM` |
+
+Unit preferences are display and input preferences only. **Changing them never converts stored values:** `WeightCheckIn.weightKg`, `FitnessProfile.heightCm`, `FitnessProfile.targetWeightKg`, and `DailyActivity.walkingDistanceKm` stay in their canonical metric units, and each `WorkoutSet` keeps the `load` and `loadUnit` it was logged with. Theme is not stored on the backend.
 
 ### Weight Check-ins
 
@@ -294,6 +336,8 @@ PostgreSQL Constraints
 Important security principles include:
 
 - Password hashes are not returned in normal API responses
+- Emails are trimmed and lower-cased at registration and login, so case variations cannot create duplicate accounts
+- Registration passwords must be at least 8 characters and at most 72 bytes of UTF-8 (bcrypt's input limit); longer passwords are rejected rather than silently truncated
 - Authenticated identity is not accepted from request bodies
 - AI tools cannot supply their own `userId`
 - Cross-user resource access is blocked through ownership-aware operations
@@ -397,6 +441,7 @@ fitness-ai-coach/
 │       ├── middleware/
 │       ├── modules/
 │       │   ├── auth/
+│       │   ├── account/
 │       │   ├── profile/
 │       │   ├── checkins/
 │       │   ├── nutrition/
@@ -467,6 +512,7 @@ This architecture makes AI a controlled component of the product rather than giv
 Completed backend verticals:
 
 - Authentication
+- Account Settings (contact details and unit preferences)
 - Fitness Profile
 - Weight Tracking
 - Weight Analytics
@@ -481,7 +527,7 @@ Completed backend verticals:
 - Workout Analytics
 - Workout AI Tool
 - Structured Workout Data (exercise catalogue, exercises, sets)
-- Automated Backend Tests (exercises and workouts)
+- Automated Backend Tests (auth, account, fitness profile, exercises, and workouts)
 - Structured AI Coach Responses
 - Multi-Tool AI Orchestration
 
