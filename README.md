@@ -377,6 +377,15 @@ Similarly:
 - Sparse history is acknowledged instead of converted into long-term trends
 - User-entered workout notes are treated as contextual information rather than independently verified measurements
 
+## Frontend Theme
+
+The frontend supports Light, Dark, and System themes.
+
+- The preference (`system`, `light`, or `dark`; default `system`) is stored only in the browser's `localStorage` under `fitai.theme`. It is not sent to the backend. Missing, invalid, or inaccessible storage falls back to `system`.
+- `<html data-theme>` always holds the resolved theme (`light` or `dark`), and `color-scheme` is set to match so native controls follow it. `system` tracks the OS setting live via `prefers-color-scheme`, and other open tabs follow preference changes.
+- Colours are semantic CSS variables in `frontend/src/index.css`: Light values on `:root`, Dark overrides on `:root[data-theme="dark"]`.
+- A small inline script in `frontend/index.html` applies the theme before the first paint. `ThemeProvider` (`frontend/src/context/ThemeContext.tsx`) keeps it in sync afterwards; components read and change it with `useTheme()`. Shared logic lives in `frontend/src/features/theme/theme.ts`, which the inline script mirrors.
+
 ## Technology Stack
 
 ### Frontend

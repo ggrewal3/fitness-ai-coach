@@ -1,3 +1,169 @@
+/* Theme tokens.
+   :root holds the Light theme (the original FitAI colours, unchanged).
+   <html data-theme> always holds the resolved theme ("light" | "dark"); it is
+   set before first paint by the inline script in index.html and kept in sync
+   by ThemeProvider (src/context/ThemeContext.tsx). Component rules use tokens
+   only; colours are never defined inside a theme block. */
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --color-bg: #f5f7fa;
+  --color-bg-fade: rgb(245 247 250 / 0%);
+  --color-surface: white;
+  --color-surface-raised: white;
+  --color-surface-muted: #f8fafc;
+  --color-surface-hover: #f8fafc;
+  --color-surface-hover-strong: #f1f5f9;
+
+  /* Form fields */
+  --color-input-bg: white;
+  --color-input-text: #172033;
+  --color-input-border: #cbd5e1;
+  --color-input-disabled-bg: #f8fafc;
+  --color-input-disabled-text: #94a3b8;
+  --color-input-invalid-bg: #fff7f7;
+  --color-input-invalid-border: #dc2626;
+
+  /* Text */
+  --color-text: #172033;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-text-label: #334155;
+  --color-text-faint: #94a3b8;
+  --color-icon-disabled: #cbd5e1;
+  --color-text-on-accent: white;
+
+  /* Borders */
+  --color-border: #e2e8f0;
+  --color-border-subtle: #f1f5f9;
+  --color-border-tile: #eef2f7;
+  --color-border-strong: #cbd5e1;
+
+  /* Primary */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-text: #2563eb;
+  --color-primary-soft: #eff6ff;
+  --color-primary-soft-hover: #dbeafe;
+  --color-selected-bg: #eff6ff;
+  --color-primary-faint: #f8fbff;
+  --color-primary-border: #bfdbfe;
+  --color-primary-border-dashed: #93c5fd;
+  --color-primary-halo: #eff6ff;
+
+  /* Info */
+  --color-info-bg: #eff6ff;
+  --color-info-border: #bfdbfe;
+  --color-info-text: #1e3a8a;
+
+  /* Danger */
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-danger-text: #b91c1c;
+  --color-danger-soft: #fef2f2;
+  --color-danger-border: #fecaca;
+  --color-danger-border-strong: #fca5a5;
+  --color-danger-message: #991b1b;
+  --color-danger-emphasis: #7f1d1d;
+
+  /* Warning / success / tags */
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fcd34d;
+  --color-warning-text: #78350f;
+  --color-success-text: #15803d;
+  --color-tag-muted-bg: #f1f5f9;
+
+  /* Sidebar / mobile drawer */
+  --color-sidebar-bg: #172033;
+  --color-sidebar-text: white;
+  --color-sidebar-muted: #cbd5e1;
+  --color-sidebar-active-bg: #334155;
+  --color-sidebar-edge: transparent;
+
+  /* Effects */
+  --color-overlay: rgb(15 23 42 / 55%);
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 4%);
+  --shadow-auth: 0 12px 30px rgb(15 23 42 / 8%);
+  --shadow-modal: 0 20px 48px rgb(15 23 42 / 25%);
+  --shadow-drawer: 0 20px 48px rgb(15 23 42 / 35%);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #0e1420;
+  --color-bg-fade: rgb(14 20 32 / 0%);
+  --color-surface: #161e2d;
+  --color-surface-raised: #1c2536;
+  --color-surface-muted: #1b2434;
+  --color-surface-hover: #1d2738;
+  --color-surface-hover-strong: #232e41;
+
+  --color-input-bg: #0f1624;
+  --color-input-text: #e6ebf2;
+  --color-input-border: #4a5872;
+  --color-input-disabled-bg: #182131;
+  --color-input-disabled-text: #66748a;
+  --color-input-invalid-bg: #2a171b;
+  --color-input-invalid-border: #f87171;
+
+  --color-text: #e6ebf2;
+  --color-text-secondary: #b4bfcd;
+  --color-text-muted: #94a3b8;
+  --color-text-label: #cdd6e2;
+  --color-text-faint: #8391a7;
+  --color-icon-disabled: #3f4b5f;
+  --color-text-on-accent: #ffffff;
+
+  --color-border: #263246;
+  --color-border-subtle: #1f2939;
+  --color-border-tile: #243044;
+  --color-border-strong: #36435a;
+
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-text: #60a5fa;
+  --color-primary-soft: #19294a;
+  --color-primary-soft-hover: #20355e;
+  --color-selected-bg: #1e3358;
+  --color-primary-faint: #121c30;
+  --color-primary-border: #2d4f8a;
+  --color-primary-border-dashed: #35598f;
+  --color-primary-halo: #15233f;
+
+  --color-info-bg: #13213b;
+  --color-info-border: #24406f;
+  --color-info-text: #c7dbff;
+
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-danger-text: #f87171;
+  --color-danger-soft: #2b1519;
+  --color-danger-border: #5b252b;
+  --color-danger-border-strong: #7a2e35;
+  --color-danger-message: #fca5a5;
+  --color-danger-emphasis: #fecaca;
+
+  --color-warning-bg: #291f0d;
+  --color-warning-border: #7c5a15;
+  --color-warning-text: #fcd34d;
+  --color-success-text: #4ade80;
+  --color-tag-muted-bg: #233044;
+
+  --color-sidebar-bg: #0a0f1a;
+  --color-sidebar-text: #ffffff;
+  --color-sidebar-muted: #cbd5e1;
+  --color-sidebar-active-bg: #1f2a3d;
+  --color-sidebar-edge: #1c2535;
+
+  --color-overlay: rgb(2 6 16 / 70%);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-auth: 0 12px 30px rgb(0 0 0 / 35%);
+  --shadow-modal: 0 20px 48px rgb(0 0 0 / 55%);
+  --shadow-drawer: 0 20px 48px rgb(0 0 0 / 60%);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -13,8 +179,8 @@ body {
   font-family:
     Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  background: #f5f7fa;
-  color: #172033;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 button,
@@ -33,8 +199,10 @@ select {
   flex: none;
   width: 240px;
   padding: 24px;
-  background: #172033;
-  color: white;
+  background: var(--color-sidebar-bg);
+  color: var(--color-sidebar-text);
+  /* Hairline edge (transparent in Light); a shadow, so no layout change. */
+  box-shadow: inset -1px 0 0 var(--color-sidebar-edge);
 }
 
 .sidebar-brand {
@@ -60,15 +228,15 @@ select {
 
 .nav-link {
   padding: 12px;
-  color: #cbd5e1;
+  color: var(--color-sidebar-muted);
   text-decoration: none;
   border-radius: 8px;
 }
 
 .nav-link:hover,
 .nav-link.active {
-  color: white;
-  background: #334155;
+  color: var(--color-sidebar-text);
+  background: var(--color-sidebar-active-bg);
 }
 
 .main-area {
@@ -81,8 +249,8 @@ select {
   justify-content: space-between;
   align-items: center;
   padding: 20px 32px;
-  background: white;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .header h1,
@@ -91,7 +259,7 @@ select {
 }
 
 .header-label {
-  color: #64748b;
+  color: var(--color-text-muted);
 }
 
 .header-menu-button,
@@ -114,10 +282,10 @@ select {
 .auth-card {
   width: min(100%, 420px);
   padding: 32px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  box-shadow: 0 12px 30px rgb(15 23 42 / 8%);
+  box-shadow: var(--shadow-auth);
 }
 
 .auth-card h1 {
@@ -132,22 +300,23 @@ select {
 .auth-form label {
   display: grid;
   gap: 6px;
-  color: #334155;
+  color: var(--color-text-label);
   font-weight: 600;
 }
 
 .auth-form input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #cbd5e1;
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-input-border);
   border-radius: 8px;
 }
 
 .auth-form button,
 .header button {
   padding: 10px 16px;
-  color: white;
-  background: #2563eb;
+  color: var(--color-text-on-accent);
+  background: var(--color-primary);
   border: 0;
   border-radius: 8px;
   cursor: pointer;
@@ -159,11 +328,11 @@ select {
 }
 
 .form-error {
-  color: #b91c1c;
+  color: var(--color-danger-text);
 }
 
 .form-success {
-  color: #15803d;
+  color: var(--color-success-text);
 }
 
 .progress-page {
@@ -176,8 +345,8 @@ select {
 
 .progress-card {
   padding: 24px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -199,21 +368,22 @@ select {
 .checkin-form label {
   display: grid;
   gap: 6px;
-  color: #334155;
+  color: var(--color-text-label);
   font-weight: 600;
 }
 
 .checkin-form input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #cbd5e1;
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-input-border);
   border-radius: 8px;
 }
 
 .checkin-form button {
   padding: 10px 16px;
-  color: white;
-  background: #2563eb;
+  color: var(--color-text-on-accent);
+  background: var(--color-primary);
   border: 0;
   border-radius: 8px;
   cursor: pointer;
@@ -237,7 +407,7 @@ select {
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
@@ -249,9 +419,9 @@ select {
 .checkin-delete {
   margin-left: auto;
   padding: 8px 14px;
-  color: #b91c1c;
-  background: white;
-  border: 1px solid #fecaca;
+  color: var(--color-danger-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-danger-border);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -290,8 +460,8 @@ select {
   align-items: center;
   gap: 2px;
   padding: 4px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
 }
 
@@ -299,7 +469,7 @@ select {
   width: 34px;
   height: 34px;
   padding: 0;
-  color: #334155;
+  color: var(--color-text-label);
   background: transparent;
   border: 0;
   border-radius: 999px;
@@ -311,7 +481,7 @@ select {
 .nutrition-date-label {
   min-width: 104px;
   padding: 7px 14px;
-  color: #172033;
+  color: var(--color-text);
   background: transparent;
   border: 0;
   border-radius: 999px;
@@ -321,7 +491,7 @@ select {
 
 .nutrition-nav-button:hover,
 .nutrition-date-label:hover {
-  background: #f1f5f9;
+  background: var(--color-surface-hover-strong);
 }
 
 .nutrition-layout {
@@ -337,15 +507,15 @@ select {
   display: grid;
   gap: 16px;
   padding: 24px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  box-shadow: var(--shadow-card);
 }
 
 .nutrition-eyebrow {
   margin: 0;
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -354,7 +524,7 @@ select {
 
 .nutrition-summary-status {
   margin: 0;
-  color: #64748b;
+  color: var(--color-text-muted);
 }
 
 .nutrition-summary-hero {
@@ -371,14 +541,14 @@ select {
 }
 
 .nutrition-summary-kcal-unit {
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 1rem;
   font-weight: 600;
 }
 
 .nutrition-summary-count {
   margin: -8px 0 0;
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.875rem;
 }
 
@@ -392,13 +562,13 @@ select {
   display: grid;
   gap: 4px;
   padding: 12px;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-tile);
   border-radius: 12px;
 }
 
 .nutrition-macro-label {
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -412,8 +582,8 @@ select {
   display: grid;
   gap: 4px;
   padding: 16px;
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
+  background: var(--color-surface-muted);
+  border: 1px dashed var(--color-border-strong);
   border-radius: 12px;
 }
 
@@ -441,27 +611,27 @@ select {
 }
 
 .nutrition-actions-row button:not(.nutrition-secondary-button) {
-  color: white;
-  background: #2563eb;
+  color: var(--color-text-on-accent);
+  background: var(--color-primary);
   border: 0;
 }
 
 .nutrition-actions-row button:not(.nutrition-secondary-button):hover {
-  background: #1d4ed8;
+  background: var(--color-primary-hover);
 }
 
 .nutrition-secondary-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #334155;
-  background: white;
-  border: 1px solid #cbd5e1;
+  color: var(--color-text-label);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
   text-decoration: none;
 }
 
 .nutrition-secondary-button:hover {
-  background: #f8fafc;
+  background: var(--color-surface-hover);
 }
 
 .nutrition-main {
@@ -481,8 +651,8 @@ select {
 
 .nutrition-meal-section {
   padding: 16px 20px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 14px;
 }
 
@@ -495,15 +665,15 @@ select {
 
 .nutrition-meal-header h3 {
   margin: 0;
-  color: #172033;
+  color: var(--color-text);
   font-size: 1.05rem;
   font-weight: 700;
 }
 
 .nutrition-add-meal-button {
   padding: 5px 12px;
-  color: #2563eb;
-  background: #eff6ff;
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
   border: 0;
   border-radius: 999px;
   font-size: 0.85rem;
@@ -512,18 +682,18 @@ select {
 }
 
 .nutrition-add-meal-button:hover {
-  background: #dbeafe;
+  background: var(--color-primary-soft-hover);
 }
 
 .nutrition-meal-empty {
   margin: 6px 0 0;
-  color: #94a3b8;
+  color: var(--color-text-faint);
   font-size: 0.875rem;
 }
 
 .nutrition-inline-add {
   padding: 0;
-  color: #2563eb;
+  color: var(--color-primary-text);
   background: none;
   border: 0;
   cursor: pointer;
@@ -548,7 +718,7 @@ select {
   align-items: center;
   gap: 16px;
   padding: 10px 0;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 .nutrition-food-row:first-child {
@@ -573,7 +743,7 @@ select {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
 }
 
@@ -588,15 +758,15 @@ select {
 }
 
 .nutrition-food-macro-line {
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.8rem;
   white-space: nowrap;
 }
 
 .nutrition-source-badge {
   padding: 1px 8px;
-  color: #2563eb;
-  background: #eff6ff;
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
   border-radius: 999px;
   font-size: 0.7rem;
   font-weight: 600;
@@ -619,19 +789,19 @@ select {
 }
 
 .nutrition-edit-button {
-  color: #475569;
+  color: var(--color-text-secondary);
 }
 
 .nutrition-edit-button:hover {
-  background: #f1f5f9;
+  background: var(--color-surface-hover-strong);
 }
 
 .nutrition-delete-button {
-  color: #b91c1c;
+  color: var(--color-danger-text);
 }
 
 .nutrition-delete-button:hover {
-  background: #fef2f2;
+  background: var(--color-danger-soft);
 }
 
 .nutrition-delete-button:disabled {
@@ -648,7 +818,7 @@ select {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgb(15 23 42 / 55%);
+  background: var(--color-overlay);
   z-index: 100;
 }
 
@@ -657,9 +827,9 @@ select {
   max-height: 90vh;
   overflow-y: auto;
   padding: 24px;
-  background: white;
+  background: var(--color-surface-raised);
   border-radius: 12px;
-  box-shadow: 0 20px 48px rgb(15 23 42 / 25%);
+  box-shadow: var(--shadow-modal);
 }
 
 .modal-header {
@@ -677,7 +847,7 @@ select {
   width: 32px;
   height: 32px;
   padding: 0;
-  color: #64748b;
+  color: var(--color-text-muted);
   background: none;
   border: 0;
   border-radius: 8px;
@@ -694,7 +864,7 @@ select {
 .nutrition-form label {
   display: grid;
   gap: 6px;
-  color: #334155;
+  color: var(--color-text-label);
   font-weight: 600;
 }
 
@@ -702,9 +872,9 @@ select {
 .nutrition-form select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--color-input-border);
   border-radius: 8px;
-  background: white;
+  background: var(--color-input-bg);
 }
 
 .nutrition-form-row {
@@ -727,8 +897,8 @@ select {
 }
 
 .nutrition-form-actions button:not(.nutrition-secondary-button) {
-  color: white;
-  background: #2563eb;
+  color: var(--color-text-on-accent);
+  background: var(--color-primary);
   border: 0;
 }
 
@@ -744,11 +914,11 @@ select {
 
 .nutrition-estimate-banner {
   padding: 12px 14px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
   border-radius: 8px;
   font-size: 0.85rem;
-  color: #1e3a8a;
+  color: var(--color-info-text);
 }
 
 .nutrition-estimate-banner p {
@@ -763,10 +933,10 @@ select {
   display: grid;
   gap: 10px;
   padding: 12px 14px;
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
   border-radius: 8px;
-  color: #78350f;
+  color: var(--color-warning-text);
   font-size: 0.85rem;
 }
 
@@ -775,8 +945,8 @@ select {
 }
 
 .nutrition-form input:disabled {
-  color: #94a3b8;
-  background: #f8fafc;
+  color: var(--color-input-disabled-text);
+  background: var(--color-input-disabled-bg);
   cursor: not-allowed;
 }
 
@@ -812,10 +982,10 @@ select {
   flex-direction: column;
   gap: 16px;
   padding: 24px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  box-shadow: var(--shadow-card);
 }
 
 .dashboard-weight {
@@ -825,7 +995,7 @@ select {
 
 .dashboard-card-text {
   margin: 0;
-  color: #475569;
+  color: var(--color-text-secondary);
   line-height: 1.5;
 }
 
@@ -850,23 +1020,23 @@ select {
 }
 
 .dashboard-primary-button {
-  color: white;
-  background: #2563eb;
+  color: var(--color-text-on-accent);
+  background: var(--color-primary);
   border: 0;
 }
 
 .dashboard-primary-button:hover {
-  background: #1d4ed8;
+  background: var(--color-primary-hover);
 }
 
 .dashboard-secondary-button {
-  color: #334155;
-  background: white;
-  border: 1px solid #cbd5e1;
+  color: var(--color-text-label);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
 }
 
 .dashboard-secondary-button:hover {
-  background: #f8fafc;
+  background: var(--color-surface-hover);
 }
 
 .dashboard-quick-actions-grid {
@@ -1021,10 +1191,10 @@ select {
 .workout-recent-card,
 .workout-card,
 .workout-editor-card {
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  box-shadow: var(--shadow-card);
 }
 
 .workout-summary-card {
@@ -1051,8 +1221,8 @@ select {
   display: grid;
   gap: 8px;
   padding: 24px;
-  background: white;
-  border: 1px dashed #cbd5e1;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border-strong);
   border-radius: 16px;
 }
 
@@ -1084,7 +1254,7 @@ select {
   gap: 2px;
   width: 100%;
   padding: 10px 12px;
-  color: #172033;
+  color: var(--color-text);
   background: transparent;
   border: 0;
   border-radius: 10px;
@@ -1093,11 +1263,11 @@ select {
 }
 
 .workout-recent-item:hover {
-  background: #f8fafc;
+  background: var(--color-surface-hover);
 }
 
 .workout-recent-item[aria-current="date"] {
-  background: #eff6ff;
+  background: var(--color-selected-bg);
 }
 
 .workout-recent-title {
@@ -1108,7 +1278,7 @@ select {
 }
 
 .workout-recent-meta {
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
 }
 
@@ -1138,7 +1308,7 @@ select {
 
 .workout-card-meta {
   margin: 2px 0 0;
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.875rem;
 }
 
@@ -1159,7 +1329,7 @@ select {
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  color: #475569;
+  color: var(--color-text-secondary);
   white-space: pre-line;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -1172,7 +1342,7 @@ select {
   padding: 12px 0 0;
   margin: 0;
   list-style: none;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 .workout-card-exercise p {
@@ -1189,7 +1359,7 @@ select {
 }
 
 .workout-card-sets {
-  color: #475569;
+  color: var(--color-text-secondary);
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -1197,16 +1367,16 @@ select {
 
 .workout-tag {
   padding: 1px 8px;
-  color: #2563eb;
-  background: #eff6ff;
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
   border-radius: 999px;
   font-size: 0.7rem;
   font-weight: 600;
 }
 
 .workout-tag.muted {
-  color: #64748b;
-  background: #f1f5f9;
+  color: var(--color-text-muted);
+  background: var(--color-tag-muted-bg);
 }
 
 .workout-delete-confirm {
@@ -1216,14 +1386,14 @@ select {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--color-danger-soft);
+  border: 1px solid var(--color-danger-border);
   border-radius: 12px;
 }
 
 .workout-delete-confirm p {
   margin: 0;
-  color: #7f1d1d;
+  color: var(--color-danger-emphasis);
   font-weight: 600;
 }
 
@@ -1235,8 +1405,8 @@ select {
 
 .workout-danger-button {
   padding: 11px 16px;
-  color: white;
-  background: #dc2626;
+  color: var(--color-text-on-accent);
+  background: var(--color-danger);
   border: 0;
   border-radius: 10px;
   cursor: pointer;
@@ -1244,7 +1414,7 @@ select {
 }
 
 .workout-danger-button:hover {
-  background: #b91c1c;
+  background: var(--color-danger-hover);
 }
 
 .workout-danger-button:disabled {
@@ -1276,9 +1446,9 @@ select {
 
 .workout-form-message {
   padding: 12px 16px;
-  color: #991b1b;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  color: var(--color-danger-message);
+  background: var(--color-danger-soft);
+  border: 1px solid var(--color-danger-border);
   border-radius: 12px;
   font-weight: 600;
 }
@@ -1296,7 +1466,7 @@ select {
 }
 
 .workout-field label {
-  color: #334155;
+  color: var(--color-text-label);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -1307,9 +1477,9 @@ select {
   width: 100%;
   min-width: 0;
   padding: 10px 12px;
-  color: #172033;
-  background: white;
-  border: 1px solid #cbd5e1;
+  color: var(--color-input-text);
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-input-border);
   border-radius: 8px;
   font-size: 1rem;
 }
@@ -1321,8 +1491,8 @@ select {
 
 .workout-field [aria-invalid="true"],
 .workout-set-input[aria-invalid="true"] {
-  background: #fff7f7;
-  border-color: #dc2626;
+  background: var(--color-input-invalid-bg);
+  border-color: var(--color-input-invalid-border);
 }
 
 .workout-field-row {
@@ -1343,25 +1513,25 @@ select {
   position: absolute;
   top: 50%;
   right: 12px;
-  color: #64748b;
+  color: var(--color-text-muted);
   pointer-events: none;
   transform: translateY(-50%);
 }
 
 .workout-field-error {
   margin: 0;
-  color: #b91c1c;
+  color: var(--color-danger-text);
   font-size: 0.85rem;
 }
 
 .workout-optional {
-  color: #64748b;
+  color: var(--color-text-muted);
   font-weight: 400;
 }
 
 .workout-hint {
   margin: 0;
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
 }
 
@@ -1380,9 +1550,9 @@ select {
 .workout-empty-exercises {
   margin: 0;
   padding: 16px;
-  color: #64748b;
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  border: 1px dashed var(--color-border-strong);
   border-radius: 12px;
 }
 
@@ -1391,13 +1561,13 @@ select {
   gap: 10px;
   min-width: 0;
   padding: 16px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
 .workout-exercise-block.has-error {
-  border-color: #fca5a5;
+  border-color: var(--color-danger-border-strong);
 }
 
 .workout-exercise-header {
@@ -1412,8 +1582,8 @@ select {
   width: 26px;
   height: 26px;
   place-items: center;
-  color: #2563eb;
-  background: #eff6ff;
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 700;
@@ -1443,7 +1613,7 @@ select {
   height: 40px;
   padding: 0;
   place-items: center;
-  color: #475569;
+  color: var(--color-text-secondary);
   background: transparent;
   border: 0;
   border-radius: 8px;
@@ -1452,16 +1622,16 @@ select {
 }
 
 .workout-icon-button:hover:not(:disabled) {
-  background: #f1f5f9;
+  background: var(--color-surface-hover-strong);
 }
 
 .workout-icon-button.danger:hover:not(:disabled) {
-  color: #b91c1c;
-  background: #fef2f2;
+  color: var(--color-danger-text);
+  background: var(--color-danger-soft);
 }
 
 .workout-icon-button:disabled {
-  color: #cbd5e1;
+  color: var(--color-icon-disabled);
   cursor: default;
 }
 
@@ -1483,7 +1653,7 @@ select {
 }
 
 .workout-set-header {
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -1496,7 +1666,7 @@ select {
 }
 
 .workout-set-number {
-  color: #64748b;
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
@@ -1506,17 +1676,17 @@ select {
   width: 100%;
   min-width: 0;
   padding: 9px 10px;
-  color: #172033;
-  background: white;
-  border: 1px solid #cbd5e1;
+  color: var(--color-input-text);
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-input-border);
   border-radius: 8px;
   font-size: 1rem;
   font-variant-numeric: tabular-nums;
 }
 
 .workout-set-unit:disabled {
-  color: #94a3b8;
-  background: #f8fafc;
+  color: var(--color-input-disabled-text);
+  background: var(--color-input-disabled-bg);
 }
 
 .workout-set-errors {
@@ -1529,8 +1699,8 @@ select {
   justify-self: start;
   min-height: 40px;
   padding: 8px 12px;
-  color: #2563eb;
-  background: #eff6ff;
+  color: var(--color-primary-text);
+  background: var(--color-primary-soft);
   border: 0;
   border-radius: 8px;
   cursor: pointer;
@@ -1538,7 +1708,7 @@ select {
 }
 
 .workout-add-set:hover:not(:disabled) {
-  background: #dbeafe;
+  background: var(--color-primary-soft-hover);
 }
 
 .workout-add-set:disabled {
@@ -1550,16 +1720,16 @@ select {
   width: 100%;
   min-height: 48px;
   padding: 12px;
-  color: #2563eb;
-  background: #f8fbff;
-  border: 1px dashed #93c5fd;
+  color: var(--color-primary-text);
+  background: var(--color-primary-faint);
+  border: 1px dashed var(--color-primary-border-dashed);
   border-radius: 12px;
   cursor: pointer;
   font-weight: 600;
 }
 
 .workout-add-exercise:hover:not(:disabled) {
-  background: #eff6ff;
+  background: var(--color-primary-soft);
 }
 
 .workout-add-exercise:disabled {
@@ -1573,14 +1743,14 @@ select {
   gap: 8px;
   min-width: 0;
   padding: 16px;
-  background: white;
-  border: 1px solid #bfdbfe;
+  background: var(--color-surface);
+  border: 1px solid var(--color-primary-border);
   border-radius: 12px;
-  box-shadow: 0 0 0 3px #eff6ff;
+  box-shadow: 0 0 0 3px var(--color-primary-halo);
 }
 
 .exercise-picker-label {
-  color: #334155;
+  color: var(--color-text-label);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -1595,8 +1765,9 @@ select {
   width: 0;
   min-width: 0;
   padding: 10px 12px;
-  color: #172033;
-  border: 1px solid #cbd5e1;
+  color: var(--color-input-text);
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-input-border);
   border-radius: 8px;
   font-size: 1rem;
 }
@@ -1606,7 +1777,7 @@ select {
   flex: none;
   min-height: 42px;
   padding: 0 12px;
-  color: #475569;
+  color: var(--color-text-secondary);
   background: transparent;
   border: 0;
   border-radius: 8px;
@@ -1616,18 +1787,18 @@ select {
 
 .exercise-picker-retry {
   justify-self: start;
-  color: #2563eb;
+  color: var(--color-primary-text);
 }
 
 .exercise-picker-cancel:hover,
 .exercise-picker-retry:hover {
-  background: #f1f5f9;
+  background: var(--color-surface-hover-strong);
 }
 
 .exercise-picker-hint {
   min-height: 1.2em;
   margin: 0;
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
 }
 
@@ -1637,8 +1808,8 @@ select {
   margin: 0;
   overflow-y: auto;
   list-style: none;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
 }
 
@@ -1654,7 +1825,7 @@ select {
 }
 
 .exercise-picker-option.active {
-  background: #eff6ff;
+  background: var(--color-selected-bg);
 }
 
 .exercise-picker-option-name {
@@ -1662,7 +1833,7 @@ select {
 }
 
 .exercise-picker-create {
-  color: #2563eb;
+  color: var(--color-primary-text);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -1680,7 +1851,10 @@ html:has(.workout-editor) {
   justify-content: flex-end;
   gap: 12px;
   padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(to top, #f5f7fa 75%, rgb(245 247 250 / 0%));
+  /* Fades from transparent at the top to the page background from 25% down.
+     Written top-to-bottom (Chrome's normalized form of the original
+     "to top, bg 75%, fade") so it rasterizes identically. */
+  background: linear-gradient(var(--color-bg-fade), var(--color-bg) 25%);
 }
 
 .workout-confirm-dialog h2 {
@@ -1690,7 +1864,7 @@ html:has(.workout-editor) {
 
 .workout-confirm-dialog p {
   margin: 0 0 20px;
-  color: #475569;
+  color: var(--color-text-secondary);
 }
 
 .workout-confirm-actions {
@@ -1815,7 +1989,9 @@ html:has(.workout-editor) {
   .sidebar.sidebar-open {
     visibility: visible;
     transform: translateX(0);
-    box-shadow: 0 20px 48px rgb(15 23 42 / 35%);
+    box-shadow:
+      inset -1px 0 0 var(--color-sidebar-edge),
+      var(--shadow-drawer);
     transition: transform 200ms ease;
   }
 
@@ -1835,7 +2011,7 @@ html:has(.workout-editor) {
     width: 36px;
     height: 36px;
     padding: 0;
-    color: #cbd5e1;
+    color: var(--color-sidebar-muted);
     background: transparent;
     border: 0;
     border-radius: 8px;
@@ -1845,8 +2021,8 @@ html:has(.workout-editor) {
   }
 
   .sidebar-close:hover {
-    color: white;
-    background: #334155;
+    color: var(--color-sidebar-text);
+    background: var(--color-sidebar-active-bg);
   }
 
   .nav-backdrop {
@@ -1854,7 +2030,7 @@ html:has(.workout-editor) {
     inset: 0;
     z-index: 50;
     display: block;
-    background: rgb(15 23 42 / 55%);
+    background: var(--color-overlay);
     animation: nav-backdrop-in 200ms ease;
   }
 
@@ -1876,14 +2052,14 @@ html:has(.workout-editor) {
     width: 40px;
     height: 40px;
     padding: 0;
-    color: #172033;
-    background: white;
-    border: 1px solid #e2e8f0;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 10px;
   }
 
   .header .header-menu-button:hover {
-    background: #f8fafc;
+    background: var(--color-surface-hover);
   }
 
   .header-mobile-brand {

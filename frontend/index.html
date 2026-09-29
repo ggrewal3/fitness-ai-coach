@@ -2,6 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Pre-paint theme: resolve the stored preference before any CSS or
+      // React loads, so the first frame uses the right theme. Mirrors
+      // src/features/theme/theme.ts (key, values, query, DOM writes).
+      (function () {
+        var preference = 'system'
+        try {
+          var stored = localStorage.getItem('fitai.theme')
+          if (stored === 'system' || stored === 'light' || stored === 'dark') preference = stored
+        } catch (e) {}
+        var theme = preference === 'system'
+          ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : preference
+        var root = document.documentElement
+        root.dataset.theme = theme
+        root.style.colorScheme = theme
+      })()
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>frontend</title>
