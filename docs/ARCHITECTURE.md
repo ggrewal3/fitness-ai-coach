@@ -96,9 +96,10 @@ User data is deliberately split across three models (see [ADR-005](DECISIONS.md#
   - `PATCH /api/account/preferences` upserts the row.
   - `PATCH /api/account/profile` updates names, phone (normalized to E.164 style), country (validated ISO 3166-1 alpha-2) and bio (plain text). Email is read-only.
 - **Unit preferences are presentation only.** Stored measurements are never converted when they change; see Measurement units below.
+- **Frontend:** the Settings page (`/settings`, see section 6) reads and edits the account, unit preferences and fitness profile through these endpoints.
 - **Not implemented:**
-  - The frontend does not use `/api/account` or `/api/profile` yet. `SettingsPage` is a stub.
-  - The preferences are not yet applied anywhere in the UI.
+  - Unit preferences are saved but not yet applied to other screens (Progress, Dashboard, Workout still show their current units). That is Phase 4.
+  - Profile photos: the Settings avatar shows initials only; there is no upload, storage or photo field yet.
 
 ## 5. Fitness domains
 
@@ -179,25 +180,50 @@ frontend/src/
   app/router.tsx            routes (createBrowserRouter)
   context/                  AuthContext + useAuth, ThemeContext + useTheme (context/hook split for react-refresh)
   services/api.ts           the only HTTP client: request(), types, error class
-  services/*.ts             per-domain wrappers and pure helpers (checkins, nutrition, exercises, workouts)
+  services/*.ts             per-domain wrappers and pure helpers (checkins, nutrition, exercises, workouts,
+                            account, fitnessProfile)
   features/workout/         WorkoutDraft model + reducer, DOM id helpers, exercise-name helpers
+  features/settings/        Settings drafts/diffs/validation, sections, scroll-spy, country list mirror
+  features/navigation/      useUnsavedChangesGuard (shared by the Workout editor and Settings)
   features/theme/theme.ts   theme preference and resolution logic
-  components/               layout (AppLayout, Header, Sidebar), auth, brand, nutrition, workout
+  components/ui/            shared primitives: ConfirmDialog, ChoiceGroup, SegmentedControl, Avatar,
+                            Skeleton, icons
+  components/               layout (AppLayout, Header, Sidebar), auth, brand, nutrition, workout, settings
   pages/                    one component per route
   index.css                 single global stylesheet, semantic colour tokens
 ```
 
 - **Routes:**
   - Public: `/login`, `/signup`.
-  - Behind `ProtectedRoute` + `AppLayout`: `/` (Dashboard), `/progress`, `/nutrition`, `/workout`, `/workout/new`, `/workout/:id/edit`, `/ai-coach` (stub), `/settings` (stub).
+  - Behind `ProtectedRoute` + `AppLayout`: `/` (Dashboard), `/progress`, `/nutrition`, `/workout`, `/workout/new`, `/workout/:id/edit`, `/ai-coach` (stub), `/settings`.
 - **State:** React state and context only, with no global state library. Pages load data inside `useEffect` with an `isCurrent` guard against stale responses.
 - **Layout:** desktop sidebar; at ≤767px the sidebar becomes an off-canvas drawer (`MOBILE_NAV_QUERY` in `AppLayout.tsx` must match the CSS media query). Other breakpoints: 1100, 900 and 640px.
 - **API errors:** `ApiRequestError` carries `status` and the backend's `errors[]` so forms can map field errors.
 - **Workout editor:**
   - It is a page (`/workout/new?date=`, `/workout/:id/edit`), not a modal ([ADR-014](DECISIONS.md#adr-014-the-workout-editor-is-a-page-not-a-modal)).
   - It edits a single `WorkoutDraft` through `workoutDraftReducer` ([ADR-015](DECISIONS.md#adr-015-a-single-shared-workoutdraft-model-for-workout-entry)). Saving converts the draft into the API payload; editing sends the full exercise list, which the server uses for its replace semantics.
-  - Unsaved changes are protected with `useBlocker` (in-app navigation, shown as a confirm dialog) and `beforeunload` (reload or close).
+  - Unsaved changes are protected by the shared `useUnsavedChangesGuard` (see below).
   - Frontend limits mirror the backend schemas (`WORKOUT_LIMITS`); the backend remains authoritative.
+- **Unsaved changes** (`features/navigation/useUnsavedChangesGuard.ts`):
+  - Blocks in-app navigation that changes the path or query (links, sidebar/drawer, browser Back) and shows `ConfirmDialog`; reload or close gets the browser's `beforeunload` prompt. Hash-only changes are never blocked.
+  - React Router allows one active blocker, so each page calls it **once** with its combined dirty state.
+  - It never blocks once the user is no longer authenticated (logout, expired token) and releases any navigation it was holding, so a logged-out page is never stuck behind the dialog.
+
+### Settings
+
+`pages/SettingsPage.tsx` with cards in `components/settings/`.
+
+- **Data:** loads `GET /api/account` and `GET /api/profile/me` in parallel. If the account fails, the page shows a Retry state. If only the fitness profile fails, only the Fitness card shows an error and Retry.
+- **Sections:** Profile (hero, Personal information, About you), Fitness, Units, Appearance, Connections, Account. Section navigation is a sticky side list above 1100px and a sticky, horizontally scrollable chip row below. It uses plain links with `aria-current` (not tabs), follows scrolling, and supports deep links such as `/settings#units`. Card internals adapt with container queries.
+- **Save model:**
+  - Personal information, About you (bio) and Fitness are **separate save boundaries**, each with its own Save/Cancel bar that appears only when that card is dirty. Each sends **only changed fields**, and the server response becomes the new baseline.
+  - Fitness creates the profile (`POST`) on first save and updates it (`PATCH`) afterwards. Cleared fields are sent as `null`. Height is entered in cm and target weight in kg until Phase 4.
+  - Units save immediately, optimistically, and roll back on failure. Appearance calls `setTheme()`.
+  - Client validation mirrors the backend schemas; server field errors are shown on their fields; drafts survive failures.
+  - One page-level unsaved-changes guard covers all three editable cards.
+- **Country:** a searchable combobox shows `Intl.DisplayNames` names and stores ISO codes. `features/settings/countries.ts` mirrors the backend's 249 supported codes; the backend stays authoritative.
+- **Content rules:** Connections is informational only ([ADR-016](DECISIONS.md#adr-016-health-platform-integrations-are-not-implemented)). `medicalNotes` is not shown. The bio and "What FitAI Coach sees" copy must stay true to the AI profile tool.
+- **Not implemented:** profile photos (initials avatar only), password change, account deletion, email change.
 
 ### Theme system
 
@@ -212,8 +238,9 @@ See [ADR-017](DECISIONS.md#adr-017-theme-preference-is-browser-local-and-resolve
   - follows other tabs via the `storage` event.
 - `useTheme()` returns `{ preference, resolvedTheme, setTheme }`.
 - Invalid, missing or inaccessible storage falls back to `system`.
-- **CSS:** `index.css` defines 61 semantic tokens on `:root` (Light) with overrides on `:root[data-theme="dark"]`. Component rules use tokens only; colours are never defined inside a theme block.
-- **Not implemented:** the Appearance control in Settings.
+- **CSS:** `index.css` defines 63 semantic tokens on `:root` (Light) with overrides on `:root[data-theme="dark"]`. Component rules use tokens only; colours are never defined inside a theme block.
+- **Scoped previews:** the same two token blocks also match `[data-theme-preview="light"]` and `[data-theme-preview="dark"]`. Any element with that attribute renders one theme's palette regardless of the page theme; the Settings theme cards use this. It does not change `<html data-theme>`, which always holds the resolved page theme.
+- **Settings:** the Appearance card (System / Light / Dark cards with live previews) is the user-facing control; it calls `setTheme()`.
 
 ## 7. AI Coach
 

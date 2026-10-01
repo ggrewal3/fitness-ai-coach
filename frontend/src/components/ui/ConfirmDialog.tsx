@@ -52,7 +52,7 @@ function ConfirmDialog({
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div
-        className="modal-panel workout-confirm-dialog"
+        className="modal-panel confirm-dialog"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -62,7 +62,7 @@ function ConfirmDialog({
       >
         <h2 id={titleId}>{title}</h2>
         <p id={messageId}>{message}</p>
-        <div className="workout-confirm-actions">
+        <div className="confirm-dialog-actions">
           <button
             ref={cancelRef}
             type="button"

@@ -295,6 +295,10 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - New UI must use existing tokens or add a token to both theme blocks.
   - Merging near-duplicate tokens is a deliberate visual change that needs approval.
   - Known Light contrast shortfalls were preserved, and are tracked separately.
+- **Amendment (2026-10-01, Settings Phase 3A):** this extends the decision without changing it.
+  - Two tokens were added for new UI: `--color-focus-ring` and `--color-success-soft`, giving 63.
+  - The two token blocks also match `[data-theme-preview]`, so a single element can render one theme's palette (Settings theme previews) without duplicating values.
+  - Light rendering of every pre-existing screen was re-verified pixel-identical.
 
 ## ADR-019: AI Coach uses read-only tools over domain services behind a provider abstraction
 

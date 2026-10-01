@@ -7,7 +7,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react'
-import { useBlocker, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { ApiRequestError } from '../../services/api'
 import type { FindOrCreateExerciseResult } from '../../services/exercises'
 import {
@@ -37,7 +37,8 @@ import {
   moveExerciseButtonId,
   setInputId,
 } from '../../features/workout/workoutDomIds'
-import ConfirmDialog from './ConfirmDialog'
+import { useUnsavedChangesGuard } from '../../features/navigation/useUnsavedChangesGuard'
+import ConfirmDialog from '../ui/ConfirmDialog'
 import ExerciseBlock from './ExerciseBlock'
 import ExercisePicker from './ExercisePicker'
 
@@ -83,28 +84,9 @@ function WorkoutEditor({ mode, initialDraft, returnTo, onSave }: WorkoutEditorPr
 
   const isDirty = savedPath === null && !isDraftEqual(draft, initialDraft)
 
-  // In-app navigation away from unsaved changes asks for confirmation.
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      isDirty &&
-      `${currentLocation.pathname}${currentLocation.search}` !==
-        `${nextLocation.pathname}${nextLocation.search}`,
-  )
-
-  // Reloading or closing the tab with unsaved changes gets the browser prompt.
-  useEffect(() => {
-    if (!isDirty) {
-      return
-    }
-
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isDirty])
+  // Navigating away, reloading or closing the tab with unsaved changes asks
+  // for confirmation.
+  const blocker = useUnsavedChangesGuard(isDirty)
 
   // After a successful save the draft is no longer "dirty", so this
   // navigation is not blocked.
@@ -522,7 +504,7 @@ function WorkoutEditor({ mode, initialDraft, returnTo, onSave }: WorkoutEditorPr
           </button>
         </div>
 
-        <p className="workout-sr-only" aria-live="polite">
+        <p className="sr-only" aria-live="polite">
           {announcement}
         </p>
       </form>

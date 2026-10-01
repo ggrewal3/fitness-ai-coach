@@ -479,3 +479,125 @@ export async function deleteWorkout(id: number): Promise<void> {
     method: "DELETE",
   })
 }
+
+// Account and settings (backend: modules/account). The user is always the
+// token's user; these endpoints never take a userId.
+
+export type WeightUnit = "KG" | "LB"
+export type HeightUnit = "CM" | "FT_IN"
+
+export type UnitPreferences = {
+  bodyWeightUnit: WeightUnit
+  workoutLoadUnit: WeightUnit
+  heightUnit: HeightUnit
+}
+
+export type Account = {
+  id: number
+  firstName: string
+  lastName: string
+  email: string
+  phone: string | null
+  countryCode: string | null
+  bio: string | null
+  createdAt: string
+  preferences: UnitPreferences
+}
+
+/** Any subset; email is read-only and cannot be sent. */
+export type UpdateAccountProfileInput = Partial<{
+  firstName: string
+  lastName: string
+  phone: string | null
+  countryCode: string | null
+  bio: string | null
+}>
+
+export async function getAccount(): Promise<Account> {
+  return request<Account>("/api/account")
+}
+
+export async function updateAccountProfile(
+  input: UpdateAccountProfileInput,
+): Promise<Account> {
+  return request<Account>("/api/account/profile", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateUnitPreferences(
+  input: Partial<UnitPreferences>,
+): Promise<UnitPreferences> {
+  return request<UnitPreferences>("/api/account/preferences", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  })
+}
+
+// Fitness profile (backend: modules/profile). Optional one-to-one: created
+// with POST once, then updated with PATCH; null clears a field.
+
+export type FitnessGoal = "LOSE_FAT" | "MAINTAIN" | "GAIN_MUSCLE"
+export type ActivityLevel =
+  | "SEDENTARY"
+  | "LIGHT"
+  | "MODERATE"
+  | "ACTIVE"
+  | "VERY_ACTIVE"
+export type DietPreference =
+  | "NO_PREFERENCE"
+  | "VEGETARIAN"
+  | "VEGAN"
+  | "PESCATARIAN"
+  | "HALAL"
+
+export type FitnessProfile = {
+  id: number
+  /** UTC-midnight timestamp of the calendar date, or null. */
+  dateOfBirth: string | null
+  heightCm: number | null
+  targetWeightKg: number | null
+  goal: FitnessGoal | null
+  activityLevel: ActivityLevel | null
+  dietPreference: DietPreference | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** medicalNotes exists in the API but is deliberately not used by the UI. */
+export type FitnessProfileInput = Partial<{
+  dateOfBirth: string | null
+  heightCm: number | null
+  targetWeightKg: number | null
+  goal: FitnessGoal | null
+  activityLevel: ActivityLevel | null
+  dietPreference: DietPreference | null
+}>
+
+type ProfileMeResponse = {
+  profile: FitnessProfile | null
+}
+
+export async function getFitnessProfile(): Promise<FitnessProfile | null> {
+  const response = await request<ProfileMeResponse>("/api/profile/me")
+  return response.profile
+}
+
+export async function createFitnessProfile(
+  input: FitnessProfileInput,
+): Promise<FitnessProfile> {
+  return request<FitnessProfile>("/api/profile", {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateFitnessProfile(
+  input: FitnessProfileInput,
+): Promise<FitnessProfile> {
+  return request<FitnessProfile>("/api/profile/me", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  })
+}
