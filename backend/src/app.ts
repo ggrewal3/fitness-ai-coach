@@ -11,6 +11,7 @@ import nutritionRoutes from "./modules/nutrition/nutrition.routes.js";
 import activityRoutes from "./modules/activity/activity.routes.js";
 import workoutRoutes from "./modules/workouts/workout.routes.js";
 import exerciseRoutes from "./modules/exercises/exercise.routes.js";
+import mediaRoutes from "./modules/media/media.routes.js";
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ app.use("/api/nutrition", nutritionRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/workouts", workoutRoutes);
 app.use("/api/exercises", exerciseRoutes);
+app.use("/api/media", mediaRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.status(200).json({

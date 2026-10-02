@@ -38,6 +38,7 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
 | ADR-021 | Logical calendar dates are separate from recorded timestamps | Accepted |
 | ADR-022 | Backend tests run against a separate real PostgreSQL database | Accepted |
 | ADR-023 | Nutrition is stored per food item, not per day | Accepted |
+| ADR-024 | Private profile-photo object storage | Accepted |
 
 ---
 
@@ -370,3 +371,39 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - Migration `20260925125036_replace_nutrition_entry_with_food_items` replaced the earlier per-day `NutritionEntry` table. It dropped the table, so any existing rows were not carried over.
 - **Rationale:** Not recorded. Observed effect, not a recorded reason: the per-item model is what the current per-item AI estimates (with `source` provenance) and the meal-grouped Nutrition UI are built on.
 - **Consequences:** The daily summary and the AI nutrition tool aggregate items by `entryDate`. "Logged days" means days with at least one item.
+
+## ADR-024: Private profile-photo object storage
+
+**Status:** Accepted (2026-10-01, Settings Phase 3B)
+
+- **Context:** Users need one profile photo that they can add, replace and remove. FitAI is a health app, so photos are personal data. There was no file storage of any kind, and production object storage (AWS) is planned but not configured.
+- **Decision:**
+  - **Database stores a key, not the image:** `User.avatarKey` holds an opaque, server-generated storage key (`avatars/<uuid>.webp`). Never image bytes, base64, the original filename or a permanent URL. The key is never sent to clients.
+  - **Storage abstraction:** account code depends only on `ObjectStorage` (`put`, `delete`, `getReadUrl`) in `backend/src/lib/storage/`. `LocalObjectStorage` implements it today, as private files under `backend/storage/` (git-ignored and never served statically). An S3-compatible adapter can implement the same interface later.
+  - **Only a processed image is stored:** uploads (JPEG, PNG or WebP, max 5 MB) are decoded by `sharp` and re-encoded.
+    - The decoded format must match the declared `Content-Type`.
+    - Images are limited to 8000 px per side and 40 MP, checked from the header before decoding.
+    - EXIF orientation is applied, then the image is **centre-cropped** to 512×512 and encoded as WebP quality 82.
+    - All input metadata (EXIF including GPS, ICC, XMP) is dropped. The original upload is never retained.
+  - **Private, signed, expiring reads:**
+    - Clients receive `avatarUrl`, a signed URL valid for about 1 hour. Expiry is rounded up to 10-minute steps so URLs stay cacheable.
+    - Local media is served by `GET /api/media/avatars/:file`, authorized by `HMAC-SHA256` over `"fitai-media-v1:" + key + ":" + expires`, using a key derived from `JWT_SECRET` with its own label. That separates it from JWTs, and no JWT is created.
+    - Signatures are compared in constant time.
+  - **Safe replacement:**
+    1. Process the image.
+    2. Store the new object.
+    3. In one transaction holding a row lock (`SELECT … FOR UPDATE`, as in workout updates), swap `avatarKey`.
+    4. Only after the commit, delete the replaced object (best effort).
+  - **Safe removal:** clear `avatarKey` first, then delete the object (best effort). Removal is idempotent.
+  - **Orphans:** a failed best-effort delete leaves an unreferenced object, never a broken avatar. A manual, dry-run-by-default sweep (`npm run storage:sweep-avatars`) removes unreferenced avatar objects older than 24 hours. There is no cron job, worker or queue.
+- **Rationale:**
+  - A key (not a URL) keeps the database independent of where and how media is served. Moving to S3 or a CDN changes the adapter, not stored data.
+  - Server-side re-encoding is the only reliable way to strip location metadata, normalize orientation and size, and neutralize malformed or disguised files. Client-side processing can be bypassed.
+  - Signed, expiring URLs keep photos private while still working in a plain `<img>`, which cannot send the bearer token.
+  - Ordering every write as "store, then point to it" and "stop pointing, then delete" means each failure leaves at most an orphan. The row lock means concurrent requests can only delete keys they personally replaced, never the active avatar.
+  - **Centre crop over sharp's `attention` crop:** both are deterministic, but in tests `attention` followed bright background objects and pushed a centred face to the edge. Centre crop is predictable for profile photos, and a client preview can show exactly what will be stored.
+- **Consequences:**
+  - **Account-deletion invariant:** deleting a `User` row (cascade) does **not** delete their object in storage. Any future account deletion must explicitly delete the user's avatar object, and should run the sweep logic as a safety net.
+  - **`avatarUrl` format:** for local storage `avatarUrl` is root-relative (`/api/media/…`); clients resolve it against the API origin. A future S3 adapter may return absolute presigned URLs.
+  - **New dependency:** `sharp` (native libvips binaries).
+  - **Not implemented:** an S3 adapter, CDN delivery, production storage configuration, avatar-upload throttling (general rate limiting is future security work), and the Settings photo UI (Phase 3C).

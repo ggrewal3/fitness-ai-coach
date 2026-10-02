@@ -5,3 +5,6 @@ node_modules
 /src/generated/prisma
 
 /src/generated/prisma
+
+# Private local object storage (profile photos). Never commit user uploads.
+/storage/

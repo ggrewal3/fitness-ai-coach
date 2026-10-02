@@ -8,6 +8,7 @@ How to run, change and verify FitAI locally. Architecture is in [ARCHITECTURE.md
 
 - **Node.js and npm.** No version is pinned (no `engines` field, no `.nvmrc`). Development currently uses Node 25 and npm 11; Prisma 7, Vite 8 and TypeScript 6 need a current Node release.
 - **Docker** with Docker Compose, for the local PostgreSQL.
+- The backend depends on **`sharp`** (image processing), which installs prebuilt native libvips binaries for macOS and Linux (x64 and arm64) during `npm install`.
 - Google Chrome is optional. It is only needed for ad-hoc headless-browser checks, which are not part of the repo.
 
 ## Repository layout
@@ -16,9 +17,10 @@ How to run, change and verify FitAI locally. Architecture is in [ARCHITECTURE.md
 backend/            Express API (own package.json)
   prisma/           schema.prisma, migrations/, seed.ts
   prisma.config.ts  Prisma config (schema path, migrations, seed command, datasource URL)
-  scripts/          run-tests.mjs (guarded test runner)
-  src/              app.ts, server.ts, lib/prisma.ts, middleware/, modules/<domain>/, types/
+  scripts/          run-tests.mjs (guarded test runner), sweep-orphan-avatars.ts (storage maintenance)
+  src/              app.ts, server.ts, lib/ (prisma, storage, images), middleware/, modules/<domain>/, types/
   src/generated/    generated Prisma client (git-ignored)
+  storage/          private local object storage (profile photos); git-ignored, created on demand
   test/             node:test suites + helpers.ts
 frontend/           React SPA (own package.json); index.html holds the pre-paint theme script
 docs/               this documentation set
@@ -74,6 +76,21 @@ cd frontend && npm run dev   # Vite dev server          → http://localhost:517
 - Before any data-changing migration, check the assumptions it relies on against real data (counts, duplicates, nulls).
 - **Never** run `prisma migrate reset` or `prisma db push` against the development database, and never edit an applied migration.
 - `npm run db:seed` is safe to re-run.
+
+## Local object storage
+
+- **Where:** profile photos are stored as private files under `backend/storage/avatars/`. The directory is git-ignored, created on first upload, and never served statically. Browsers read photos only through signed URLs (`GET /api/media/...`). Never commit anything from it.
+- **Signing:** signed URLs use `JWT_SECRET` as keying material (domain-separated), so no extra environment variable is needed. Rotating `JWT_SECRET` invalidates outstanding media URLs as well as tokens.
+- **Orphans:** a failed best-effort delete can leave an unreferenced photo. To find and remove them, run from `backend/`:
+
+  ```bash
+  npm run storage:sweep-avatars                      # dry run: lists eligible orphans, deletes nothing
+  npm run storage:sweep-avatars -- --delete          # delete unreferenced photos older than 24 h
+  npm run storage:sweep-avatars -- --min-age-hours=48
+  ```
+
+  It reads referenced keys from the database in `DATABASE_URL`, and never deletes a referenced photo or one newer than the age threshold.
+- **Tests:** tests use a temporary storage directory and never touch `backend/storage/`.
 
 ## Tests
 

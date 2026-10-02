@@ -85,6 +85,10 @@ model User {
   phone        String?
   countryCode  String?
   bio          String?
+  // Opaque private object-storage key of the processed profile photo
+  // (e.g. "avatars/<uuid>.webp"), never a URL or image data. Read URLs are
+  // signed per request. Deleting a User does NOT delete the object (ADR-024).
+  avatarKey    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

@@ -22,7 +22,7 @@ User ─┬─ 0..1 FitnessProfile
 
 | Model | Responsibility | Key constraints and indexes |
 |---|---|---|
-| `User` | Identity and credentials (`email`, bcrypt `passwordHash`), names, optional contact details (`phone`, `countryCode`, `bio`) | `email` unique, always stored trimmed and lower-case |
+| `User` | Identity and credentials (`email`, bcrypt `passwordHash`), names, optional contact details (`phone`, `countryCode`, `bio`), and `avatarKey`: the opaque private storage key of the profile photo (null when none) | `email` unique, always stored trimmed and lower-case |
 | `FitnessProfile` | Optional coaching context: `dateOfBirth`, `heightCm`, `targetWeightKg`, `goal`, `activityLevel`, `dietPreference`, `medicalNotes` | `userId` unique (1:1) |
 | `UserPreference` | Optional display/input units: `bodyWeightUnit` (default KG), `workoutLoadUnit` (default LB), `heightUnit` (default CM) | `userId` unique (1:1). No row means the defaults; created on the first preferences update |
 | `WeightCheckIn` | One body-weight measurement (`weightKg`, `recordedAt`) | index `(userId, recordedAt)` |
@@ -58,6 +58,7 @@ Country codes are validated in application code (`account/countryCodes.ts`), not
 - `WorkoutExercise → WorkoutSession` and `WorkoutSet → WorkoutExercise` cascade.
 - `WorkoutExercise → Exercise` is `ON DELETE NO ACTION`, checked at the end of the statement. An exercise still used by a workout cannot be deleted on its own, but deleting a user removes their workouts and custom exercises in the same statement without conflict.
 - A workout may only reference built-ins or **its owner's** custom exercises. The service layer enforces this (`assertExercisesVisible`); the database does not.
+- **Stored files are outside the cascade.** `User.avatarKey` points at an object in private storage (`backend/storage/` locally). Deleting the `User` row removes the key but **not** the object. Any account-deletion feature must delete the user's avatar object explicitly ([ADR-024](DECISIONS.md#adr-024-private-profile-photo-object-storage)); the orphan sweep is only a safety net.
 
 ## Canonical units
 
@@ -89,6 +90,7 @@ The API enforces these. Keep them if you add writers (seeds, scripts, future AI 
 6. Built-in `builtInKey`s are permanent and never reused or deleted. Built-in uniqueness relies on `builtInKey` and seed checks, because Postgres treats NULL `userId`s as distinct in the `(userId, normalizedName)` index.
 7. `DailyActivity.source` is always `MANUAL`; the API cannot set it. No implemented frontend flow produces `NutritionFoodItem.source = AI_PHOTO`, although the API accepts the value from clients.
 8. Unit preferences and `UserPreference` rows never trigger data rewrites.
+9. `User.avatarKey` is either null or a server-generated `avatars/<uuid>.webp` key. It is written only by the avatar service: store the object first, then swap the key under a row lock. It is never returned by the API; clients get a signed `avatarUrl`. It never stores image data, filenames or URLs.
 
 ## Migrations
 

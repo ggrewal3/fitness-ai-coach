@@ -85,6 +85,7 @@ describe("GET /api/account", () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(Object.keys(response.body).sort(), [
+      "avatarUrl",
       "bio",
       "countryCode",
       "createdAt",
@@ -102,6 +103,8 @@ describe("GET /api/account", () => {
     assert.equal(response.body.phone, null);
     assert.equal(response.body.countryCode, null);
     assert.equal(response.body.bio, null);
+    assert.equal(response.body.avatarUrl, null);
+    assert.ok(!("avatarKey" in response.body));
     assert.ok(!Number.isNaN(Date.parse(response.body.createdAt)));
     assert.deepEqual(response.body.preferences, DEFAULT_PREFERENCES);
 

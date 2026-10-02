@@ -10,7 +10,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.test.json",
     "db:seed": "prisma db seed",
-    "test": "node scripts/run-tests.mjs"
+    "test": "node scripts/run-tests.mjs",
+    "storage:sweep-avatars": "tsx scripts/sweep-orphan-avatars.ts"
   },
   "keywords": [
     "fitness",
@@ -31,6 +32,7 @@
     "jsonwebtoken": "^9.0.3",
     "openai": "^7.13.0",
     "pg": "^8.22.0",
+    "sharp": "^0.35.5",
     "zod": "^4.5.4"
   },
   "devDependencies": {

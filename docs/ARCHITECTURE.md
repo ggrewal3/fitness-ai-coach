@@ -40,7 +40,7 @@ Not implemented: production deployment, Nginx (the `nginx/` and `database/` dire
 <domain>.types.ts        TypeScript types
 ```
 
-Mounted modules (`app.ts`): `auth`, `account`, `profile`, `checkins`, `ai`, `nutrition`, `activity`, `workouts`, `exercises`. There are also `/api/health` and `/api/protected-test` (a diagnostic route that only checks the JWT).
+Mounted modules (`app.ts`): `auth`, `account`, `profile`, `checkins`, `ai`, `nutrition`, `activity`, `workouts`, `exercises`, `media`. There are also `/api/health` and `/api/protected-test` (a diagnostic route that only checks the JWT).
 
 `src/modules/users/user.service.ts` is an unused development stub. It is not routed.
 
@@ -65,7 +65,7 @@ Most request schemas are `.strict()`, so unknown keys are rejected. Exceptions: 
 
 ### Cross-cutting gaps (implemented today = absent)
 
-The app sets `cors()` with no origin restriction and `express.json()` with the default body-size limit. There is no rate limiting, no security-header middleware, no session or token revocation, no refresh tokens, and no structured logger: logging is `console.*`, with AI events logged as objects.
+The app sets `cors()` with no origin restriction and `express.json()` with the default body-size limit (only `PUT /api/account/avatar` adds a route-scoped raw image parser). There is no rate limiting (including avatar-upload throttling), no security-header middleware, no session or token revocation, no refresh tokens, and no structured logger: logging is `console.*`, with AI events logged as objects.
 
 ## 3. Authentication
 
@@ -87,7 +87,7 @@ User data is deliberately split across three models (see [ADR-005](DECISIONS.md#
 
 | Model | Holds | API |
 |---|---|---|
-| `User` | Identity and credentials (`email`, `passwordHash`) plus contact/profile details (`firstName`, `lastName`, `phone`, `countryCode`, `bio`) | `/api/auth/*`, `/api/account` |
+| `User` | Identity and credentials (`email`, `passwordHash`) plus contact/profile details (`firstName`, `lastName`, `phone`, `countryCode`, `bio`) and the private profile-photo storage key (`avatarKey`) | `/api/auth/*`, `/api/account` |
 | `FitnessProfile` (optional 1:1) | Coaching context: date of birth, height, target weight, goal, activity level, diet preference, medical notes | `/api/profile` |
 | `UserPreference` (optional 1:1) | Display/input units: `bodyWeightUnit`, `workoutLoadUnit`, `heightUnit` | `/api/account/preferences` |
 
@@ -95,11 +95,35 @@ User data is deliberately split across three models (see [ADR-005](DECISIONS.md#
   - `GET /api/account` returns identity, contact details and preferences. If the user has no `UserPreference` row it returns the defaults (KG / LB / CM) and does **not** create one.
   - `PATCH /api/account/preferences` upserts the row.
   - `PATCH /api/account/profile` updates names, phone (normalized to E.164 style), country (validated ISO 3166-1 alpha-2) and bio (plain text). Email is read-only.
+  - `PUT` / `DELETE /api/account/avatar` set and remove the profile photo. Account responses include `avatarUrl` (signed, expiring) but never `avatarKey`. See "Profile photos and private media" below.
 - **Unit preferences are presentation only.** Stored measurements are never converted when they change; see Measurement units below.
 - **Frontend:** the Settings page (`/settings`, see section 6) reads and edits the account, unit preferences and fitness profile through these endpoints.
 - **Not implemented:**
   - Unit preferences are saved but not yet applied to other screens (Progress, Dashboard, Workout still show their current units). That is Phase 4.
-  - Profile photos: the Settings avatar shows initials only; there is no upload, storage or photo field yet.
+  - Profile-photo UI (Phase 3C): the backend supports photos, but Settings still shows the initials avatar and has no upload or remove controls.
+
+### Profile photos and private media
+
+See [ADR-024](DECISIONS.md#adr-024-private-profile-photo-object-storage).
+
+- **Storage:** `lib/storage/` defines `ObjectStorage` (`put`, `delete`, `getReadUrl`). Today the only implementation is `LocalObjectStorage`: private files under `backend/storage/` (git-ignored, never served statically), with keys `avatars/<uuid>.webp`. `getObjectStorage()` returns the active instance; tests swap in a temporary directory with `setObjectStorage()`.
+- **Upload pipeline** (`lib/images/avatarImage.ts`, `modules/account/avatar.service.ts`):
+  1. The route accepts the raw image body (JPEG, PNG or WebP, max 5 MB) after authentication.
+  2. sharp reads the header. The format must match the declared type, and the image must be at most 8000 px per side and 40 MP.
+  3. sharp decodes, applies EXIF orientation, centre-crops to 512×512 and encodes WebP quality 82. No input metadata survives.
+  4. The object is stored first. Then `avatarKey` is swapped inside a transaction holding a row lock. Then the replaced object is deleted, best effort.
+- **Removal:** clear `avatarKey` first, then delete the object, best effort. Idempotent.
+- **Failures:**
+  - A storage failure leaves the old avatar untouched (503).
+  - A database failure removes the new object again.
+  - A failed delete leaves an orphan, logged as `{ event, key }` only.
+- **Reads:** `avatarUrl` is a signed URL (HMAC over key and expiry, about 1 hour, domain-separated from JWTs) served by `GET /api/media/avatars/:file`.
+  - That endpoint requires no JWT; the signature is the authorization.
+  - It accepts only `<uuid>.webp` names, so traversal fails before storage is touched.
+  - It returns 403 for any bad, tampered or expired link, and 404 for a missing object.
+  - Responses carry `nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` and private caching.
+- **Orphan sweep:** `npm run storage:sweep-avatars` (see [DEVELOPMENT.md](DEVELOPMENT.md#local-object-storage)) lists unreferenced avatar objects older than 24 hours and deletes them only with `--delete`.
+- **Not implemented:** S3 or any production object storage, CDN delivery, avatar-upload throttling, and the Settings photo UI (Phase 3C).
 
 ## 5. Fitness domains
 
@@ -223,7 +247,7 @@ frontend/src/
   - One page-level unsaved-changes guard covers all three editable cards.
 - **Country:** a searchable combobox shows `Intl.DisplayNames` names and stores ISO codes. `features/settings/countries.ts` mirrors the backend's 249 supported codes; the backend stays authoritative.
 - **Content rules:** Connections is informational only ([ADR-016](DECISIONS.md#adr-016-health-platform-integrations-are-not-implemented)). `medicalNotes` is not shown. The bio and "What FitAI Coach sees" copy must stay true to the AI profile tool.
-- **Not implemented:** profile photos (initials avatar only), password change, account deletion, email change.
+- **Not implemented:** the profile-photo UI (initials avatar only; the backend exists, see section 4), password change, account deletion, email change.
 
 ### Theme system
 
@@ -271,6 +295,7 @@ See [DATABASE.md](DATABASE.md).
 ## 10. Infrastructure
 
 - `docker-compose.yml` runs a local `postgres:17` container on host port 5433 with a named volume. Its credentials are local-development-only values.
+- Uploaded media (profile photos) is stored on the backend host's filesystem under `backend/storage/` (git-ignored). There is no shared or production object storage yet.
 - Backend and frontend run on the host (`npm run dev`).
 - **Not implemented:** production hosting, Nginx reverse proxy, HTTPS, secrets management, CI/CD, and backups. The README roadmap lists AWS deployment as planned.
 
@@ -288,3 +313,5 @@ Before merging, check that a change doesn't break any of these:
 8. AI output is untrusted until validated. AI never persists data directly: AI proposes, the user confirms, the normal API persists.
 9. `medicalNotes` and `bio` are never sent to the model.
 10. Theme preference is browser-local; `data-theme` holds only a resolved theme; colours come only from tokens.
+11. Media objects are private. The database stores only opaque keys (never URLs or image data), clients see only signed, expiring URLs, and an object is deleted only after the database stopped referencing it.
+12. Deleting a `User` row does **not** delete their stored objects. Any account-deletion feature must explicitly delete the user's avatar object (ADR-024).

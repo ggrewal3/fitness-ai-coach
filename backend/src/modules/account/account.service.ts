@@ -1,5 +1,6 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import prisma from "../../lib/prisma.js";
+import { getObjectStorage } from "../../lib/storage/index.js";
 import type {
   AccountResponse,
   UpdateAccountProfileInput,
@@ -29,15 +30,18 @@ const accountSelect = {
   phone: true,
   countryCode: true,
   bio: true,
+  // Internal only: turned into a signed avatarUrl and never returned (ADR-024).
+  avatarKey: true,
   createdAt: true,
   preference: { select: preferenceSelect },
 } as const;
 
 type AccountRow = Prisma.UserGetPayload<{ select: typeof accountSelect }>;
 
-function toAccountResponse({ preference, ...user }: AccountRow): AccountResponse {
+async function toAccountResponse({ preference, avatarKey, ...user }: AccountRow): Promise<AccountResponse> {
   return {
     ...user,
+    avatarUrl: avatarKey ? await getObjectStorage().getReadUrl(avatarKey) : null,
     preferences: preference ?? { ...DEFAULT_PREFERENCES },
   };
 }
@@ -57,7 +61,7 @@ export async function getAccount(userId: number): Promise<AccountResponse | null
     select: accountSelect,
   });
 
-  return user ? toAccountResponse(user) : null;
+  return user ? await toAccountResponse(user) : null;
 }
 
 export async function updateAccountProfile(
@@ -77,7 +81,7 @@ export async function updateAccountProfile(
       select: accountSelect,
     });
 
-    return toAccountResponse(user);
+    return await toAccountResponse(user);
   } catch (error) {
     if (isMissingUserError(error)) {
       return null;

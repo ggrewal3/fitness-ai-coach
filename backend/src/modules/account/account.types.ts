@@ -21,6 +21,8 @@ export interface AccountResponse {
   phone: string | null;
   countryCode: string | null;
   bio: string | null;
+  /** Signed, expiring read URL of the profile photo, or null (ADR-024). */
+  avatarUrl: string | null;
   createdAt: Date;
   preferences: UserPreferences;
 }

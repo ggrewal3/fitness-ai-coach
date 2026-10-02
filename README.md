@@ -21,7 +21,7 @@ Instead of acting as a generic chatbot, the AI Coach can reason over structured 
 Backend API:
 
 - User registration and login with JWT authentication and bcrypt password hashing; emails are normalized to lowercase
-- Account settings: contact details, bio, and body-weight/workout-load/height unit preferences
+- Account settings: contact details, bio, private profile photos (signed URLs), and body-weight/workout-load/height unit preferences
 - Fitness profile management with validated fields
 - Weight check-ins, per-food-item nutrition logging, daily activity, and workout sessions
 - Structured workouts: ordered exercises with sets, reps, and optional load (kg or lb, stored exactly as entered)
@@ -37,7 +37,7 @@ Frontend:
 - Settings: profile and contact details, bio, fitness profile, unit preferences, appearance, connection status, and sign-out
 - Light, Dark, and System themes
 
-Not yet in the frontend: the AI Coach chat and activity. These exist only as backend APIs or stub pages. Unit preferences are saved but not yet applied to other screens, and profile photos aren't supported yet.
+Not yet in the frontend: the AI Coach chat and activity. These exist only as backend APIs or stub pages. Unit preferences are saved but not yet applied to other screens, and the Settings page can't upload a profile photo yet (the backend supports it).
 
 ## Architecture
 
@@ -129,7 +129,7 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for environment variables, the mi
 
 ### Near-Term
 
-- Profile photos in Settings
+- Profile photo upload and removal in Settings (backend done)
 - Apply unit preferences across Progress, Dashboard, and Workout
 - Frontend AI Coach experience
 - Remaining user-facing fitness tracking workflows (activity)

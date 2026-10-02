@@ -46,9 +46,11 @@ An engineering reference for the API as implemented. The Zod schemas in `backend
 
 | Method | Path | Request | Success |
 |---|---|---|---|
-| GET | `/api/account` | none | `{ id, firstName, lastName, email, phone, countryCode, bio, createdAt, preferences: { bodyWeightUnit, workoutLoadUnit, heightUnit } }` |
+| GET | `/api/account` | none | `{ id, firstName, lastName, email, phone, countryCode, bio, avatarUrl, createdAt, preferences: { bodyWeightUnit, workoutLoadUnit, heightUnit } }` |
 | PATCH | `/api/account/profile` | strict, partial: `firstName`, `lastName`, `phone`, `countryCode`, `bio` | `200` same shape as GET |
 | PATCH | `/api/account/preferences` | strict, partial: `bodyWeightUnit` (`KG`/`LB`), `workoutLoadUnit` (`KG`/`LB`), `heightUnit` (`CM`/`FT_IN`) | `200 { bodyWeightUnit, workoutLoadUnit, heightUnit }` |
+| PUT | `/api/account/avatar` | **raw image body** (not JSON) with `Content-Type: image/jpeg`, `image/png` or `image/webp`; max 5 MB | `200` account (same shape as GET) with the new `avatarUrl` |
+| DELETE | `/api/account/avatar` | none | `200` account with `avatarUrl: null` (idempotent) |
 
 - **GET** returns the defaults `KG` / `LB` / `CM` if no preference row exists, and does not create one. **PATCH preferences** upserts the row.
 - **Field rules:**
@@ -57,7 +59,22 @@ An engineering reference for the API as implemented. The Zod schemas in `backend
   - `countryCode`: string or `null`, trimmed and upper-cased. Must be one of the 249 officially assigned ISO 3166-1 alpha-2 codes (`countryCodes.ts`). Blank becomes `null`.
   - `bio`: string or `null`. `\r\n`/`\r` become `\n`, then the value is trimmed; at most 500 characters; blank becomes `null`. Tab and line feed are allowed; other C0/C1 control characters are rejected. Stored verbatim as plain text.
 - **Email is read-only:** an `email` key is rejected (`400`, field `body`).
-- **Errors:** if the token's user no longer exists, all three routes return `404 {"message":"User not found."}`.
+- **Errors:** if the token's user no longer exists, every account route returns `404 {"message":"User not found."}`.
+- **`avatarUrl`** (all account responses): `null`, or a signed read URL valid for about 1 hour (ADR-024).
+  - With local storage it is root-relative, for example `/api/media/avatars/<uuid>.webp?expires=…&signature=…`; resolve it against the API origin (`new URL(avatarUrl, apiBaseUrl)`).
+  - Treat it as opaque and refresh it by re-fetching the account rather than caching it long-term. The storage key itself is never returned.
+- **Profile photo upload** (`PUT /api/account/avatar`):
+  - Authentication is checked before the body is read. There is no target user in the path, query or body; it always changes the token's user.
+  - The bytes must decode as the declared format. The server stores a re-encoded 512×512 WebP: EXIF orientation applied, centre-cropped, all metadata removed. The original is not kept.
+  - Replacing a photo deletes the previous one only after the new one is active.
+  - Errors:
+    - `415` missing or unsupported `Content-Type`.
+    - `413 {"message":"Profile photos must be 5 MB or smaller."}`.
+    - `400 {"message":…}` for empty, corrupt, truncated or disguised files, or images over 8000 px per side or 40 MP.
+    - `503` when storing fails; the previous photo is kept.
+    - `401`, and `404` if the user no longer exists.
+  - A body sent as `application/json` that isn't valid JSON is rejected with `400` by the app-wide JSON parser, as on every route.
+- **Profile photo removal** (`DELETE /api/account/avatar`): clears the photo first, then deletes the stored object (best effort). Calling it with no photo also returns `200`.
 - Changing preferences **never converts stored data** (see [DATABASE.md](DATABASE.md#canonical-units)).
 
 ## Fitness profile (`modules/profile`)
@@ -173,6 +190,20 @@ An engineering reference for the API as implemented. The Zod schemas in `backend
   - Detail: `{ id, title, workoutDate, trainingType, durationMinutes, notes, recordedAt, exercises: [{ id, position, exercise: { id, name, isCustom }, sets: [{ id, position, reps, load, loadUnit }] }] }`.
   - Summary: the session fields plus `exerciseCount` and `setCount`, ordered by `workoutDate` desc, then `recordedAt` desc, then `id` desc.
 - **Errors:** not owned or missing → `404 {"message":"Workout session not found."}`.
+
+## Media (`modules/media`)
+
+| Method | Path | Auth | Success |
+|---|---|---|---|
+| GET | `/api/media/avatars/:file?expires=&signature=` | **No JWT**; the signed URL is the authorization | `200` image bytes |
+
+- **How URLs are obtained:** only from `avatarUrl` in account responses. Clients never build them.
+- **Validation:**
+  - `:file` must be `<uuid>.webp`; anything else, including traversal attempts, returns `404`.
+  - The signature must match exactly this key and `expires`, and must not have expired. Otherwise `403 {"message":"This media link is invalid or has expired."}`, the same response for every failure.
+  - A valid link to a missing object returns `404 {"message":"Not found."}`.
+- **Response headers:** `Content-Type: image/webp`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `Content-Disposition: inline`, and `Cache-Control: private, max-age=<seconds until expiry>`.
+- **Scope:** this endpoint exists for local storage. A future S3 adapter would return presigned storage URLs instead.
 
 ## AI (`modules/ai`)
 
