@@ -20,8 +20,16 @@ export interface ModelToolResult {
   output: unknown;
 }
 
+/** An earlier conversation turn, as plain text (client-supplied, untrusted). */
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface ModelSessionRequest<T> {
   systemPrompt: string;
+  /** Earlier turns, oldest first; never includes the current message. */
+  history?: readonly ConversationTurn[];
   userMessage: string;
   schemaName: string;
   responseSchema: ZodType<T>;

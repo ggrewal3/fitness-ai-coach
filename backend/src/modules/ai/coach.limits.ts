@@ -20,6 +20,17 @@ export const COACH_LIMITS = {
 
 export type CoachLimits = { -readonly [K in keyof typeof COACH_LIMITS]: number };
 
+/**
+ * Client-held conversation history (ADR-026). Requests over these limits are
+ * rejected (400), never trimmed: the client trims oldest-first before sending.
+ */
+export const COACH_HISTORY_LIMITS = {
+  maxMessages: 10,
+  maxUserChars: 2000,
+  maxAssistantChars: 4000,
+  maxTotalChars: 12_000,
+} as const;
+
 export const PROVIDER_TIMEOUT_MS = 25_000;
 export const PROVIDER_MAX_RETRIES = 1;
 

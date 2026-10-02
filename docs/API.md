@@ -211,10 +211,12 @@ Both endpoints are authenticated, read/compute only, and **never persist data**.
 
 | Method | Path | Request | Success |
 |---|---|---|---|
-| POST | `/api/ai/coach` | strict: `message` (trimmed, 1–2000), `clientContext: { today, timeZone }` | `200 { answer, actionItems: string[≤5], followUpQuestion: string \| null }` |
+| POST | `/api/ai/coach` | strict: `message` (trimmed, 1–2000), `clientContext: { today, timeZone }`, optional `history: [{ role, content }]` | `200 { answer, actionItems: string[≤5], followUpQuestion: string \| null, sources: [{ type, startDate, endDate }] }` |
 | POST | `/api/ai/nutrition/estimate` | strict: `foodName` (1–200), `quantity` (> 0), `unit` (1–20) | `200 { foodName, quantity, unit, calories, proteinGrams, carbsGrams, fatGrams, note }` |
 
-- **Coach:** single-turn, with no conversation history. The coach may call read-only tools over the caller's own data.
+- **Coach:** the coach may call read-only tools over the caller's own data. Nothing is stored between requests.
+  - `history` (optional, default `[]`): earlier turns, oldest first, **without** the current `message`. Each turn is strict `{ role: "user" | "assistant", content }`; content is trimmed and non-empty. At most 10 turns, user turns ≤ 2,000 characters, assistant turns ≤ 4,000, total ≤ 12,000. Roles need not alternate. Invalid or oversized history returns 400 (paths such as `history`, `history.3.content`, `history.0.role`); the server never trims it. History is untrusted conversational context, never evidence ([ADR-026](DECISIONS.md#adr-026-ai-coach-conversation-context-is-client-held-bounded-and-untrusted)).
+  - `sources`: what the coach reviewed, derived by the server from successful tool runs. `type` is `profile`, `weight`, `nutrition`, `activity` or `workouts`; `startDate`/`endDate` (`YYYY-MM-DD`, the user's calendar) give the reviewed window and are null for `profile`. One entry per type, in order of first use; `[]` when no data was reviewed.
   - `clientContext.today` is the user's local date (`YYYY-MM-DD`) and `clientContext.timeZone` an IANA name (e.g. `Europe/London`; raw offsets are rejected). `today` must be within ±1 day of the server's current date in that timezone. Field errors use paths such as `clientContext.today`; unknown top-level keys are rejected (field `body`).
   - Rate limited per user: 10 requests per minute and 150 per day. Every authenticated request counts, including invalid ones and ones that fail upstream; refused (429) requests do not.
 - **Estimate:** `foodName`, `quantity` and `unit` are echoed from the request, never from the model. The result is a proposal; saving it is a separate `POST /api/nutrition` (typically with `source: "AI_TEXT"`).

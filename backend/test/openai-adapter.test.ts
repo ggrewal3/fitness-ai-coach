@@ -115,6 +115,32 @@ describe("OpenAI adapter", () => {
     assert.deepEqual(JSON.parse(outputs[1].output), { error: "Invalid tool arguments." });
   });
 
+  it("sends history as user/assistant turns, oldest first, before the current message", async () => {
+    setModelProvider(new OpenAIProvider());
+    const history = [
+      { role: "user" as const, content: "How was my training this week?" },
+      { role: "assistant" as const, content: "Three sessions.\n\nFollow-up question: Compare with last week?" },
+    ];
+    replies = [
+      { body: response([functionCall("call_w", "getWorkoutHistory", '{"days":14}')]) },
+      { body: response([text(ANSWER)]) },
+    ];
+
+    await generateCoachResponse(user.id, { ...request, message: "Yes, what about last week?", history });
+
+    const firstInput = received[0].body.input;
+    assert.deepEqual(firstInput, [
+      { role: "user", content: "How was my training this week?" },
+      { role: "assistant", content: "Three sessions.\n\nFollow-up question: Compare with last week?" },
+      { role: "user", content: "Yes, what about last week?" },
+    ]);
+    // The follow-up call keeps the same order, then this request's tool exchange.
+    const secondInput = received[1].body.input;
+    assert.deepEqual(secondInput.slice(0, 3), firstInput);
+    assert.deepEqual(secondInput.slice(3).map((item: any) => item.type), ["function_call", "function_call_output"]);
+    assert.equal(secondInput[4].call_id, "call_w");
+  });
+
   it("treats refusals and unparseable output as invalid output", async () => {
     setModelProvider(new OpenAIProvider());
     replies = [{ body: response([message([{ type: "refusal", refusal: "I can't help with that." }])]) }];

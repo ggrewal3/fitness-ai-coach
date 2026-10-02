@@ -89,6 +89,11 @@ class OpenAIProviderSession<T> implements ModelProviderSession<T> {
     private readonly model: string,
     private readonly request: ModelSessionRequest<T>
   ) {
+    // Earlier turns in order, then the current message; this request's tool
+    // calls and results are appended after it.
+    for (const turn of request.history ?? []) {
+      this.input.push({ role: turn.role, content: turn.content });
+    }
     this.input.push({
       role: "user",
       content: request.userMessage,

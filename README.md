@@ -130,7 +130,7 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for environment variables, the mi
 
 ### Near-Term
 
-- AI Coach Phase 1: conversation context (1B), the Coach interface (1C), evaluation and demo data (1D). The grounded backend (1A) is done
+- AI Coach Phase 1: the Coach interface (1C), evaluation and demo data (1D). The grounded backend (1A) and conversation context with sources (1B) are done
 - Remaining user-facing fitness tracking workflows (activity)
 - Progress and photo workflows
 - Expand automated test coverage, including the frontend

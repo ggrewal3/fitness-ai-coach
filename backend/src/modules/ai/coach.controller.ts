@@ -18,12 +18,12 @@ export async function coach(
   }
 
   try {
-    const { response } = await generateCoachResponse(
+    const { response, sources } = await generateCoachResponse(
       req.userId,
       req.body as CoachRequest
     );
 
-    return res.status(200).json(response);
+    return res.status(200).json({ ...response, sources });
   } catch (error) {
     if (error instanceof CoachDeadlineError) {
       return res.status(504).json({

@@ -3,6 +3,7 @@ import { getUnitPreferences } from "../account/account.service.js";
 import { COACH_LIMITS, type CoachLimits } from "./coach.limits.js";
 import { buildCoachSystemPrompt, COACH_PROMPT_VERSION } from "./coach.prompts.js";
 import { coachResponseSchema } from "./coach.schemas.js";
+import { deriveSources, type CoachSource, type SuccessfulToolUse } from "./coach.sources.js";
 import type { CoachRequest, CoachResponse } from "./coach.types.js";
 import {
   ModelOutputValidationError,
@@ -36,15 +37,15 @@ export class CoachTurnLimitError extends Error {
 /** The model refused; reported to users like any invalid output (502). */
 class ModelRefusalError extends ModelOutputValidationError {}
 
-/** A tool the model actually used (internal; exposed as sources in Phase 1B). */
-export interface CoachToolUse {
-  name: string;
-  days: number | null;
-}
+/** A tool that ran successfully: the internal record sources are derived from. */
+export type CoachToolUse = SuccessfulToolUse;
 
 export interface CoachRunResult {
   response: CoachResponse;
+  /** Successful tool runs, in order (internal; tool names never leave the server). */
   toolsUsed: CoachToolUse[];
+  /** Public provenance derived from toolsUsed (ADR-026). */
+  sources: CoachSource[];
 }
 
 type ToolOutcome = "ok" | "cached" | "unknown_tool" | "invalid_arguments" | "error" | "too_large" | "turn_cap" | "request_cap";
@@ -130,6 +131,14 @@ export async function generateCoachResponse(
     }
   };
 
+  // Earlier turns are untrusted conversational context (ADR-026): they reach
+  // the model, but tools still read the facts. Only their size is logged.
+  const history = request.history ?? [];
+  const historyMetrics = {
+    historyMessages: history.length,
+    historyChars: history.reduce((sum, turn) => sum + turn.content.length, 0),
+    hasHistory: history.length > 0,
+  };
   let model = "unknown";
   let usage: TokenUsage | undefined;
   let modelTurns = 0;
@@ -148,6 +157,7 @@ export async function generateCoachResponse(
     const provider = getModelProvider();
     const session = provider.createSession({
       systemPrompt: buildCoachSystemPrompt(context),
+      history,
       userMessage: request.message,
       schemaName: "coach_response",
       responseSchema: coachResponseSchema,
@@ -237,6 +247,8 @@ export async function generateCoachResponse(
       throw new ModelOutputValidationError();
     }
 
+    const sources = deriveSources(toolsUsed, context.today);
+
     console.info({
       event: "ai.coach.completed",
       requestId,
@@ -247,11 +259,13 @@ export async function generateCoachResponse(
       modelTurns,
       toolCallCount,
       toolNames: [...new Set(toolsUsed.map((tool) => tool.name))],
+      sourceTypes: sources.map((source) => source.type),
+      ...historyMetrics,
       usage,
       success: true,
     });
 
-    return { response: parsedResponse.data, toolsUsed };
+    return { response: parsedResponse.data, toolsUsed, sources };
   } catch (error) {
     console.error({
       event: "ai.coach.completed",
@@ -263,6 +277,7 @@ export async function generateCoachResponse(
       modelTurns,
       toolCallCount,
       toolNames: [...new Set(toolsUsed.map((tool) => tool.name))],
+      ...historyMetrics,
       usage,
       success: false,
       failureCategory: failureCategory(error),

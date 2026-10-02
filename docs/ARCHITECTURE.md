@@ -296,12 +296,12 @@ See [ADR-017](DECISIONS.md#adr-017-theme-preference-is-browser-local-and-resolve
 
 Summary only; details in [AI-SYSTEM.md](AI-SYSTEM.md).
 
-- `POST /api/ai/coach` is single-turn: a message plus the client's local date and timezone in, a structured `{ answer, actionItems, followUpQuestion }` out. It is driven by a tool-calling loop over 5 **read-only** tools (profile, weight, nutrition, activity, workout history) that wrap domain services.
+- `POST /api/ai/coach`: a message, the client's local date and timezone, and optional bounded client-held history (untrusted text turns, never stored; [ADR-026](DECISIONS.md#adr-026-ai-coach-conversation-context-is-client-held-bounded-and-untrusted)) in; a structured `{ answer, actionItems, followUpQuestion }` plus server-derived `sources` out. It is driven by a tool-calling loop over 5 **read-only** tools (profile, weight, nutrition, activity, workout history) that wrap domain services.
 - **Grounding:** tools work on the user's logical dates and rolling 7-day periods, return deterministic metrics (averages, sufficiency verdicts, protein per kg) plus display values in the user's preferred units, and bound every list they return.
 - **Hardening:** at most 5 provider calls, 4 tool calls per turn and 8 per request, a 45-second deadline, a 25-second provider timeout with one retry, and a per-user rate limit. Logs carry metadata only.
 - `POST /api/ai/nutrition/estimate` is a tool-less structured estimate that never persists anything.
 - The model never touches the database, never chooses `userId`, and its output is Zod-validated before it is returned.
-- **Not implemented:** the frontend AI Coach page (it is a stub), conversation history and memory, any AI write actions, streaming, and RAG.
+- **Not implemented:** the frontend AI Coach page (it is a stub), persisted conversations and long-term memory, any AI write actions, streaming, and RAG.
 
 ## 8. Database access
 

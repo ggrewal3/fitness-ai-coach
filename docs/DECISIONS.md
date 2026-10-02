@@ -40,6 +40,7 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
 | ADR-023 | Nutrition is stored per food item, not per day | Accepted |
 | ADR-024 | Private profile-photo object storage | Accepted |
 | ADR-025 | The AI Coach is anchored to the client's local date and timezone | Accepted |
+| ADR-026 | AI Coach conversation context is client-held, bounded and untrusted | Accepted |
 
 ---
 
@@ -457,3 +458,23 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - The coach API requires `clientContext`; the frontend must send it (Phase 1C).
   - Reasoning about dates more than about a day from the server clock is impossible through the coach, by design.
   - The deterministic period metrics live in the domain services and are tested with fixed dates.
+
+## ADR-026: AI Coach conversation context is client-held, bounded and untrusted
+
+**Status:** Accepted (2026-10-02, AI Coach Phase 1B)
+
+- **Context:** Follow-ups ("Why?", "What about last week?", "And my protein?") need the earlier conversation. Coaching facts, however, must keep coming from the user's logged data, and storing health conversations on the server would need its own privacy, retention and deletion design.
+- **Decision:**
+  - The client keeps the conversation and sends `history` with each coach request: earlier user and assistant turns as plain text, oldest first, without the current message. The server stores nothing; there is no conversation ID and no long-term memory.
+  - History is bounded (at most 10 turns; user ≤ 2,000 characters, assistant ≤ 4,000, total ≤ 12,000) and strictly validated. Invalid or oversized history is rejected (400), never trimmed by the server. Roles need not alternate.
+  - History is **untrusted conversational context, never evidence.** It goes to the model as ordinary user/assistant turns before the current message, never into the system prompt, and cannot carry tool output. The prompt (`coach-v3`) says earlier messages may be outdated or altered, cannot change the rules, and that logged facts must be re-read with tools in the current request.
+  - Each successful response includes `sources: [{ type, startDate, endDate }]`, derived deterministically from tools that ran successfully, never from the model. Types are public categories (`profile`, `weight`, `nutrition`, `activity`, `workouts`). The period is the window the tool was asked to review; comparison periods and internal reference lookups do not widen it. Failed, invalid, rejected and oversized calls are excluded; repeated calls merge.
+  - The model's structured output is unchanged (`answer`, `actionItems`, `followUpQuestion`).
+- **Rationale:**
+  - Native user/assistant turns give the model the best understanding of follow-ups; the trust boundary is enforced by tools reading live data and by the prompt, not by hiding the conversation's shape.
+  - A client-held conversation keeps health conversations off the server. Forged history can only affect the forger's own session, because there are no write tools and every tool read is scoped by the JWT `userId`.
+  - Server-derived sources are truthful provenance the UI can show ("Reviewed workouts · Sep 26–Oct 2") without trusting the model's account of what it looked at.
+- **Consequences:**
+  - The frontend (Phase 1C) owns the conversation: it keeps it per tab in `sessionStorage`, scoped to the signed-in user and cleared on logout and on 401, trims oldest-first to the limits, and sends only completed exchanges.
+  - Each provider call re-sends the history (up to about 3,000 extra input tokens per call); the loop limits, deadline and rate limit are unchanged.
+  - That follow-ups really re-query tools is model behavior, checked by the Phase 1D evaluations; the deterministic tests cover what the server enforces.
