@@ -172,3 +172,11 @@ export const SparkIcon = createIcon(
 export const CloseIcon = createIcon(<path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />, 'CloseIcon')
 
 export const ChevronDownIcon = createIcon(<path d="m6.5 9.5 5.5 5.5 5.5-5.5" />, 'ChevronDownIcon')
+
+export const CameraIcon = createIcon(
+  <>
+    <path d="M4 8.5A2 2 0 0 1 6 6.5h1.8l1.4-2h5.6l1.4 2H18a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+    <circle cx="12" cy="12.5" r="3.5" />
+  </>,
+  'CameraIcon',
+)

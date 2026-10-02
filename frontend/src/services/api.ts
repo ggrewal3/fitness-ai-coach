@@ -1,3 +1,5 @@
+import { resolveApiUrl } from "./apiUrl"
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(
   /\/$/,
   "",
@@ -500,6 +502,11 @@ export type Account = {
   phone: string | null
   countryCode: string | null
   bio: string | null
+  /**
+   * Signed, expiring read URL of the profile photo, or null (ADR-024). It may
+   * be root-relative to the API; display it via resolveMediaUrl().
+   */
+  avatarUrl: string | null
   createdAt: string
   preferences: UnitPreferences
 }
@@ -533,6 +540,25 @@ export async function updateUnitPreferences(
     method: "PATCH",
     body: JSON.stringify(input),
   })
+}
+
+// Profile photo (ADR-024). The body is the raw image file with its own MIME
+// type (request() only adds a JSON Content-Type when none is given).
+export async function uploadAvatar(file: File): Promise<Account> {
+  return request<Account>("/api/account/avatar", {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": file.type },
+  })
+}
+
+export async function deleteAvatar(): Promise<Account> {
+  return request<Account>("/api/account/avatar", { method: "DELETE" })
+}
+
+/** A browser-usable URL for media returned by the API (e.g. avatarUrl). */
+export function resolveMediaUrl(url: string): string {
+  return resolveApiUrl(API_BASE_URL, url)
 }
 
 // Fitness profile (backend: modules/profile). Optional one-to-one: created

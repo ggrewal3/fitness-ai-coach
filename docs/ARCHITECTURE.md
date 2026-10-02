@@ -97,10 +97,8 @@ User data is deliberately split across three models (see [ADR-005](DECISIONS.md#
   - `PATCH /api/account/profile` updates names, phone (normalized to E.164 style), country (validated ISO 3166-1 alpha-2) and bio (plain text). Email is read-only.
   - `PUT` / `DELETE /api/account/avatar` set and remove the profile photo. Account responses include `avatarUrl` (signed, expiring) but never `avatarKey`. See "Profile photos and private media" below.
 - **Unit preferences are presentation only.** Stored measurements are never converted when they change; see Measurement units below.
-- **Frontend:** the Settings page (`/settings`, see section 6) reads and edits the account, unit preferences and fitness profile through these endpoints.
-- **Not implemented:**
-  - Unit preferences are saved but not yet applied to other screens (Progress, Dashboard, Workout still show their current units). That is Phase 4.
-  - Profile-photo UI (Phase 3C): the backend supports photos, but Settings still shows the initials avatar and has no upload or remove controls.
+- **Frontend:** the Settings page (`/settings`, see section 6) reads and edits the account, unit preferences, profile photo and fitness profile through these endpoints.
+- **Not implemented:** unit preferences are saved but not yet applied to other screens (Progress, Dashboard, Workout still show their current units). That is Phase 4.
 
 ### Profile photos and private media
 
@@ -123,7 +121,8 @@ See [ADR-024](DECISIONS.md#adr-024-private-profile-photo-object-storage).
   - It returns 403 for any bad, tampered or expired link, and 404 for a missing object.
   - Responses carry `nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` and private caching.
 - **Orphan sweep:** `npm run storage:sweep-avatars` (see [DEVELOPMENT.md](DEVELOPMENT.md#local-object-storage)) lists unreferenced avatar objects older than 24 hours and deletes them only with `--delete`.
-- **Not implemented:** S3 or any production object storage, CDN delivery, avatar-upload throttling, and the Settings photo UI (Phase 3C).
+- **Frontend:** `avatarUrl` is root-relative; the client resolves it against `VITE_API_BASE_URL` (`services/apiUrl.ts`, absolute URLs pass through). The Settings photo flow is described in section 6.
+- **Not implemented:** S3 or any production object storage, CDN delivery, and avatar-upload throttling.
 
 ## 5. Fitness domains
 
@@ -207,11 +206,12 @@ frontend/src/
   services/*.ts             per-domain wrappers and pure helpers (checkins, nutrition, exercises, workouts,
                             account, fitnessProfile)
   features/workout/         WorkoutDraft model + reducer, DOM id helpers, exercise-name helpers
-  features/settings/        Settings drafts/diffs/validation, sections, scroll-spy, country list mirror
+  features/settings/        Settings drafts/diffs/validation, sections, scroll-spy, country list mirror,
+                            profile-photo checks and useAvatarImage
   features/navigation/      useUnsavedChangesGuard (shared by the Workout editor and Settings)
   features/theme/theme.ts   theme preference and resolution logic
-  components/ui/            shared primitives: ConfirmDialog, ChoiceGroup, SegmentedControl, Avatar,
-                            Skeleton, icons
+  components/ui/            shared primitives: Modal, ConfirmDialog, ChoiceGroup, SegmentedControl,
+                            Avatar, Skeleton, icons
   components/               layout (AppLayout, Header, Sidebar), auth, brand, nutrition, workout, settings
   pages/                    one component per route
   index.css                 single global stylesheet, semantic colour tokens
@@ -247,7 +247,16 @@ frontend/src/
   - One page-level unsaved-changes guard covers all three editable cards.
 - **Country:** a searchable combobox shows `Intl.DisplayNames` names and stores ISO codes. `features/settings/countries.ts` mirrors the backend's 249 supported codes; the backend stays authoritative.
 - **Content rules:** Connections is informational only ([ADR-016](DECISIONS.md#adr-016-health-platform-integrations-are-not-implemented)). `medicalNotes` is not shown. The bio and "What FitAI Coach sees" copy must stay true to the AI profile tool.
-- **Not implemented:** the profile-photo UI (initials avatar only; the backend exists, see section 4), password change, account deletion, email change.
+- **Profile photo** (`components/settings/ProfilePhoto.tsx`, `PhotoPreviewDialog.tsx`, `features/settings/profilePhoto.ts`):
+  - The hero avatar shows the photo, or initials when there is none. "Add/Change photo" and "Remove photo" are real buttons; the avatar itself is a pointer shortcut and the only drag-and-drop target.
+  - Selection checks type (JPEG, PNG, WebP), size (5 MB) and decoded dimensions (8000 px per side, 40 MP) before anything is sent. These checks are UX only; the backend validates again and stays authoritative.
+  - A preview dialog (`components/ui/Modal.tsx`) shows the photo in the same circle with `object-fit: cover` centred, which matches the server's EXIF-oriented centre crop, plus file name, type, size and dimensions. Nothing is uploaded until Save. Upload sends the raw file (`PUT /api/account/avatar`, no progress percentage).
+  - A failed upload keeps the dialog and the selected file, shows a friendly message for 400/413/415/503/network errors, and offers "Try again" without reselecting. A 401 follows the normal sign-out handling.
+  - Removal goes through `ConfirmDialog`; on failure the photo stays.
+  - Object URLs for previews are created in event handlers and revoked when replaced, cancelled, saved or on unmount, but kept after a failed upload so Retry still has the image.
+  - SettingsPage stays the owner of the account. Successful uploads and removals replace it with the server response. A selected but unsaved photo is not part of the unsaved-changes guard.
+  - **Expired or failed images** (`useAvatarImage`): the avatar hides the image and shows initials, refetches the account once (merging only `avatarUrl`), and retries once per photo. If that also fails it stays on initials, with no loop. An unloaded image is transparent, so a broken-image icon never appears.
+- **Not implemented:** interactive cropping, camera capture, an avatar in the app header, password change, account deletion, email change.
 
 ### Theme system
 

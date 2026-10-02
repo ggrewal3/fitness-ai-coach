@@ -2239,10 +2239,16 @@ html:has(.workout-editor) {
 
 /* Profile hero */
 
+/* Grid areas: avatar on the left spanning the identity block and the photo
+   actions; one centred column on narrow cards (see container queries). */
 .settings-hero {
-  display: flex;
+  display: grid;
+  grid-template-areas:
+    "avatar identity"
+    "avatar actions";
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 24px;
+  gap: 14px 24px;
   min-width: 0;
   padding: 28px;
   background: linear-gradient(135deg, var(--color-primary-soft) 0%, var(--color-surface) 65%);
@@ -2252,6 +2258,7 @@ html:has(.workout-editor) {
 }
 
 .avatar {
+  position: relative;
   display: inline-grid;
   flex: none;
   place-items: center;
@@ -2267,10 +2274,21 @@ html:has(.workout-editor) {
   user-select: none;
 }
 
+/* The photo sits over the always-rendered initials and is only revealed once
+   it has loaded, so a failed image never shows a broken-image icon. */
 .avatar-image {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: 50% 50%;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.avatar-image.loaded {
+  opacity: 1;
 }
 
 .avatar-glyph {
@@ -2284,7 +2302,14 @@ html:has(.workout-editor) {
   font-size: 2.5rem;
 }
 
+.settings-hero > .settings-hero-avatar,
+.profile-photo-zone {
+  grid-area: avatar;
+}
+
 .settings-hero-identity {
+  grid-area: identity;
+  align-self: end;
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -3449,10 +3474,21 @@ html:has(.settings-save-footer) {
 
 @container settings (max-width: 600px) {
   .settings-hero {
-    flex-direction: column;
+    grid-template-areas:
+      "avatar"
+      "identity"
+      "actions";
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
     gap: 16px;
     padding: 24px 20px;
     text-align: center;
+  }
+
+  .profile-photo-actions,
+  .profile-photo-buttons {
+    justify-items: center;
+    justify-content: center;
   }
 
   .settings-hero-identity {
@@ -3641,6 +3677,354 @@ html:has(.settings-save-footer) {
   .choice-option,
   .segmented-label,
   .theme-option {
+    transition: none;
+  }
+}
+
+/* Profile photo (Settings hero) */
+
+.profile-photo-zone {
+  position: relative;
+  justify-self: center;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.profile-photo-zone.busy {
+  cursor: progress;
+}
+
+.profile-photo-zone .settings-hero-avatar {
+  display: grid;
+}
+
+.profile-photo-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-on-accent);
+  background: var(--color-overlay);
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+
+/* Hover only where hover exists; touch relies on the badge and buttons. */
+@media (hover: hover) {
+  .profile-photo-zone:not(.busy):hover .profile-photo-overlay {
+    opacity: 1;
+  }
+}
+
+.settings-hero:has(.profile-photo-button:focus-visible) .profile-photo-overlay {
+  opacity: 1;
+}
+
+.profile-photo-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--color-text-on-accent);
+  background: var(--color-primary);
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px var(--color-surface);
+  pointer-events: none;
+}
+
+.profile-photo-zone.drag-over {
+  outline: 3px dashed var(--color-focus-ring);
+  outline-offset: 5px;
+}
+
+.profile-photo-drop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  color: var(--color-text-on-accent);
+  background: var(--color-overlay);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Indeterminate progress ring (no percentages: fetch can't report upload progress). */
+.photo-busy-ring {
+  position: absolute;
+  inset: -7px;
+  border: 3px solid var(--color-primary-soft);
+  border-top-color: var(--color-primary);
+  border-radius: 999px;
+  animation: photo-busy-spin 0.9s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes photo-busy-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.profile-photo-actions {
+  grid-area: actions;
+  align-self: start;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.profile-photo-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-photo-button {
+  gap: 8px;
+}
+
+.profile-photo-remove {
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.profile-photo-remove:hover,
+.profile-photo-remove:focus-visible {
+  color: var(--color-danger-text);
+  background: var(--color-danger-soft);
+}
+
+.profile-photo-remove:focus-visible,
+.profile-photo-button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.profile-photo-actions [aria-disabled="true"] {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.profile-photo-status {
+  display: flex;
+  align-items: center;
+  min-height: 1.6rem;
+}
+
+.profile-photo-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.profile-photo-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--color-danger-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.profile-photo-error svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* Photo preview dialog (components/ui/Modal + PhotoPreviewDialog) */
+
+.photo-dialog {
+  display: grid;
+  gap: 16px;
+  width: min(440px, 100%);
+  text-align: center;
+}
+
+.photo-dialog:focus {
+  outline: none;
+}
+
+.photo-dialog-title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1.25rem;
+}
+
+.photo-dialog-description {
+  margin: -8px 0 0;
+  color: var(--color-text-secondary);
+}
+
+.photo-dialog-preview {
+  position: relative;
+  width: 200px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  margin: 6px auto;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 4px var(--color-surface-raised),
+    var(--shadow-card);
+}
+
+/* Same framing as the server: EXIF-oriented, centre-cropped square. */
+.photo-dialog-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+  background: var(--color-surface-muted);
+  border-radius: 999px;
+}
+
+.photo-dialog-meta {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.photo-dialog-meta dd {
+  margin: 0;
+}
+
+.photo-dialog-filename {
+  color: var(--color-text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.photo-dialog-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.photo-dialog-facts dd ~ dd::before {
+  content: "·";
+  margin-right: 8px;
+}
+
+.photo-dialog-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.photo-dialog-privacy svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-text-muted);
+}
+
+.photo-dialog-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--color-danger-message);
+  background: var(--color-danger-soft);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.photo-dialog-error svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.photo-dialog-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.photo-dialog-choose {
+  justify-self: center;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--color-primary-text);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.photo-dialog-choose:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.photo-dialog-choose:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.photo-dialog-choose:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.photo-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.photo-dialog-buttons > * {
+  min-height: 44px;
+}
+
+@media (max-width: 420px) {
+  .photo-dialog-preview {
+    width: 160px;
+  }
+
+  .photo-dialog-buttons > * {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-busy-ring {
+    animation: none;
+  }
+
+  .avatar-image,
+  .profile-photo-overlay {
     transition: none;
   }
 }

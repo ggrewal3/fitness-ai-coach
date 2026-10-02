@@ -1,7 +1,10 @@
 import {
+  deleteAvatar,
   getAccount,
+  resolveMediaUrl,
   updateAccountProfile,
   updateUnitPreferences,
+  uploadAvatar,
   type Account,
   type HeightUnit,
   type UnitPreferences,
@@ -26,3 +29,15 @@ export async function saveUnitPreferences(
 ): Promise<UnitPreferences> {
   return updateUnitPreferences(input)
 }
+
+/** Uploads a new profile photo; resolves to the updated account. */
+export async function saveProfilePhoto(file: File): Promise<Account> {
+  return uploadAvatar(file)
+}
+
+/** Removes the profile photo (idempotent); resolves to the updated account. */
+export async function removeProfilePhoto(): Promise<Account> {
+  return deleteAvatar()
+}
+
+export { resolveMediaUrl }

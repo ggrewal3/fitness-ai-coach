@@ -406,4 +406,8 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - **Account-deletion invariant:** deleting a `User` row (cascade) does **not** delete their object in storage. Any future account deletion must explicitly delete the user's avatar object, and should run the sweep logic as a safety net.
   - **`avatarUrl` format:** for local storage `avatarUrl` is root-relative (`/api/media/…`); clients resolve it against the API origin. A future S3 adapter may return absolute presigned URLs.
   - **New dependency:** `sharp` (native libvips binaries).
-  - **Not implemented:** an S3 adapter, CDN delivery, production storage configuration, avatar-upload throttling (general rate limiting is future security work), and the Settings photo UI (Phase 3C).
+  - **Not implemented:** an S3 adapter, CDN delivery, production storage configuration, and avatar-upload throttling (general rate limiting is future security work). The Settings photo UI was also listed here until Phase 3C; see the amendment below.
+- **Amendment (2026-10-02, Settings Phase 3C):** implementation status only; the decision is unchanged.
+  - The Settings profile-photo frontend is implemented: choose or drop a photo, preview it in the same centred `object-fit: cover` circle the server crop produces, then save, replace or remove it through the endpoints above.
+  - The client resolves root-relative `avatarUrl` values against the API origin and, when an image fails to load (for example an expired link), refetches the account once for a freshly signed URL before falling back to initials.
+  - Client-side type, size and dimension checks are for UX only; server-side validation and re-encoding remain authoritative.

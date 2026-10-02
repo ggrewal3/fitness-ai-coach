@@ -210,6 +210,17 @@ function SettingsPage() {
   }, [isReady, scrollToSection])
 
   const handleAccountSaved = useCallback((saved: Account) => setAccount(saved), [])
+
+  // A displayed avatar link failed (e.g. its signature expired): fetch a freshly
+  // signed one and merge only avatarUrl, so no other state is overwritten.
+  const refreshAvatarUrl = useCallback(async () => {
+    try {
+      const fresh = await fetchAccount()
+      setAccount((current) => (current ? { ...current, avatarUrl: fresh.avatarUrl } : current))
+    } catch {
+      // Keep the initials; the image hook retries at most once.
+    }
+  }, [])
   const handlePreferencesSaved = useCallback(
     (preferences: UnitPreferences) => setAccount((current) => (current ? { ...current, preferences } : current)),
     [],
@@ -269,7 +280,13 @@ function SettingsPage() {
           <div className="settings-content">
             <section id="profile" className="settings-section" aria-labelledby={sectionHeadingId('profile')}>
               {sectionHeading('profile', 'Profile')}
-              <ProfileHero account={account} goal={profile?.goal ?? null} />
+              <ProfileHero
+                account={account}
+                goal={profile?.goal ?? null}
+                onAccountChange={handleAccountSaved}
+                onRefreshAvatarUrl={refreshAvatarUrl}
+                announce={announce}
+              />
               <PersonalInfoCard
                 account={account}
                 onSaved={handleAccountSaved}
