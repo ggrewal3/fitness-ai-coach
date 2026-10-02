@@ -55,6 +55,16 @@ function isMissingUserError(error: unknown): boolean {
   );
 }
 
+/** Only the unit preferences (defaults when no row exists), e.g. for AI display units. */
+export async function getUnitPreferences(userId: number): Promise<UserPreferences> {
+  const preference = await prisma.userPreference.findUnique({
+    where: { userId },
+    select: preferenceSelect,
+  });
+
+  return preference ?? { ...DEFAULT_PREFERENCES };
+}
+
 export async function getAccount(userId: number): Promise<AccountResponse | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },

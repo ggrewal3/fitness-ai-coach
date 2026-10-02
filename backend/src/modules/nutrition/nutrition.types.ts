@@ -44,27 +44,52 @@ export interface DailyNutritionSummary {
   numberOfFoodItems: number;
 }
 
-export interface NutritionHistoryEntry {
+/** One logical day (entryDate). Totals are null when nothing was logged. */
+export interface NutritionGroundingDay {
+  date: string;
+  logged: boolean;
+  itemCount: number;
+  calories: number | null;
+  proteinGrams: number | null;
+  carbsGrams: number | null;
+  fatGrams: number | null;
+}
+
+/** Averages over logged days only; null when no day was logged. */
+export interface NutritionAverages {
+  loggedDays: number;
+  averageCalories: number | null;
+  averageProteinGrams: number | null;
+  averageCarbsGrams: number | null;
+  averageFatGrams: number | null;
+}
+
+export interface NutritionGroundingFood {
+  foodName: string;
+  quantity: number;
+  unit: string;
+  mealType: MealType;
   calories: number;
   proteinGrams: number;
   carbsGrams: number;
   fatGrams: number;
-  recordedAt: Date;
 }
 
-export interface NutritionHistorySummary {
-  averageCalories: number;
-  averageProteinGrams: number;
-  averageCarbsGrams: number;
-  averageFatGrams: number;
-  totalLoggedDays: number;
-  latestCalories: number;
-  latestProteinGrams: number;
+export interface NutritionGroundingDetail extends NutritionGroundingDay {
+  /** True for today: the day is still in progress. */
+  isPartialDay: boolean;
+  foods: NutritionGroundingFood[];
 }
 
-export interface NutritionHistorySummaryResult {
-  found: boolean;
+export interface NutritionGroundingResult {
+  today: string;
   requestedDays: number;
-  summary: NutritionHistorySummary | null;
-  entries: NutritionHistoryEntry[];
+  /** Every date in the requested window, newest first. */
+  window: { startDate: string; endDate: string; days: NutritionGroundingDay[] };
+  /** Completed days only (today is excluded). */
+  windowAverages: NutritionAverages;
+  currentPeriod: { startDate: string; endDate: string } & NutritionAverages;
+  previousPeriod: { startDate: string; endDate: string } & NutritionAverages;
+  todayDetail: NutritionGroundingDetail;
+  yesterdayDetail: NutritionGroundingDetail;
 }

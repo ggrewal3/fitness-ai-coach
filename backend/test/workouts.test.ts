@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import {
   createWorkoutSession,
-  getWorkoutHistorySummary,
   updateWorkoutSession,
 } from "../src/modules/workouts/workout.service.js";
 import {
@@ -686,40 +685,5 @@ describe("cascading user deletion", () => {
     );
     assert.equal(await prisma.exercise.count({ where: { userId: null } }), builtInCount);
     assert.ok(await prisma.exercise.findUnique({ where: { id: benchId } }));
-  });
-});
-
-describe("getWorkoutHistorySummary (AI tool service)", () => {
-  it("keeps its existing result shape and metrics", async () => {
-    const user = await createTestUser(api, createdUserIds);
-    const now = Date.now();
-    const earlier = new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString();
-    const later = new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString();
-
-    await createWorkout(user, pushDay({ trainingType: "STRENGTH", durationMinutes: 60, recordedAt: earlier, notes: "Heavy" }));
-    await createWorkout(user, pushDay({ trainingType: "CARDIO", durationMinutes: 30, recordedAt: later, notes: undefined, exercises: [] }));
-
-    const result = await getWorkoutHistorySummary(user.id, 30);
-
-    assert.equal(result.found, true);
-    assert.equal(result.requestedDays, 30);
-    assert.deepEqual(Object.keys(result).sort(), ["entries", "found", "requestedDays", "summary"]);
-    assert.deepEqual(result.summary, {
-      totalSessions: 2,
-      totalTrainingMinutes: 90,
-      averageDurationMinutes: 45,
-      sessionsByType: { STRENGTH: 1, CARDIO: 1, MOBILITY: 0, SPORT: 0, OTHER: 0 },
-      latestTrainingType: "CARDIO",
-      latestDurationMinutes: 30,
-      latestRecordedAt: new Date(later),
-    });
-    assert.equal(result.entries.length, 2);
-    for (const entry of result.entries) {
-      assert.deepEqual(Object.keys(entry).sort(), ["durationMinutes", "notes", "recordedAt", "trainingType"]);
-    }
-    assert.equal(result.entries[0].notes, "Heavy");
-
-    const empty = await getWorkoutHistorySummary(userB.id + 1_000_000, 30);
-    assert.deepEqual(empty, { found: false, requestedDays: 30, summary: null, entries: [] });
   });
 });

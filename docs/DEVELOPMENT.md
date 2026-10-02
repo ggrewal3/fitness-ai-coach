@@ -117,6 +117,8 @@ Tests start the real app on an ephemeral port, create uniquely named users throu
 - cross-user access returning 404, or never leaking;
 - the happy path.
 
+**AI Coach tests need no OpenAI key.** `coach-loop.test.ts` replaces the provider with a scripted fake through `setModelProvider()` (reset it in `afterEach`) to test loop limits, error mapping, the rate limit and log privacy. The grounding tools (`ai-grounding.test.ts`) run against the test database with a fixed `today`, so their periods do not depend on the real date. `display-units.test.ts` loads the frontend's `unitFormat.ts` at runtime to check the backend display strings match it. `openai-adapter.test.ts` points the real OpenAI adapter at a local fake Responses API (`OPENAI_BASE_URL`, a dummy key) to check request shape, tool-call pairing, parsing, refusals, retries and the nutrition estimate.
+
 ### Frontend
 
 `npm test` (in `frontend/`) runs `node --test` on `tests/**/*.test.ts`. It needs no database and no extra dependency: Node strips TypeScript types, and `tests/support/resolve-ts.mjs` resolves the app's extensionless imports. Tests import only pure modules (no React, no `import.meta.env`), such as `features/units/` and the Settings and Workout drafts.

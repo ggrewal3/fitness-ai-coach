@@ -26,7 +26,7 @@ Backend API:
 - Weight check-ins, per-food-item nutrition logging, daily activity, and workout sessions
 - Structured workouts: ordered exercises with sets, reps, and optional load (kg or lb, stored exactly as entered)
 - Exercise catalogue with built-in FitAI exercises, private custom exercises, and deterministic search
-- AI Coach with structured responses and read-only tool calling across profile, weight, nutrition, activity, and workouts
+- AI Coach with structured responses and read-only tool calling across profile, weight, nutrition, activity, and workouts, grounded in the user's local date, rolling 7-day comparisons, deterministic metrics with data-sufficiency checks, and preferred display units; bounded tool output, call caps, a request deadline and a per-user rate limit
 - AI nutrition estimates that the user confirms before anything is saved
 - Runtime validation with Zod across API and AI boundaries
 
@@ -130,12 +130,11 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for environment variables, the mi
 
 ### Near-Term
 
-- Frontend AI Coach experience
+- AI Coach Phase 1: conversation context (1B), the Coach interface (1C), evaluation and demo data (1D). The grounded backend (1A) is done
 - Remaining user-facing fitness tracking workflows (activity)
 - Progress and photo workflows
 - Expand automated test coverage, including the frontend
-- Improve production security and error handling (rate limiting, token revocation)
-- Add AI evaluation and observability
+- Improve production security and error handling (general rate limiting, token revocation)
 - Add a small vetted fitness-knowledge retrieval layer (RAG)
 - Deploy the application
 

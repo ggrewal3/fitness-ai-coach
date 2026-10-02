@@ -24,26 +24,27 @@ export interface DailyActivityResponse {
   updatedAt: Date;
 }
 
-export interface ActivityHistoryEntry {
+/** One logged activity day (activityDate). */
+export interface ActivityGroundingEntry {
+  date: string;
   steps: number;
   walkingDistanceKm: number | null;
   activeCalories: number | null;
-  source: ActivitySource;
-  recordedAt: Date;
 }
 
-export interface ActivityHistorySummary {
-  averageSteps: number;
-  totalSteps: number;
+/** Averages over logged days only; null when nothing is logged. */
+export interface ActivityAverages {
+  loggedDays: number;
+  averageSteps: number | null;
   averageWalkingDistanceKm: number | null;
   averageActiveCalories: number | null;
-  totalLoggedDays: number;
-  latestSteps: number;
 }
 
-export interface ActivityHistorySummaryResult {
-  found: boolean;
+export interface ActivityGroundingResult {
+  today: string;
   requestedDays: number;
-  summary: ActivityHistorySummary | null;
-  entries: ActivityHistoryEntry[];
+  /** Logged days in the requested window, newest first. */
+  window: { startDate: string; endDate: string; entries: ActivityGroundingEntry[] } & ActivityAverages;
+  currentPeriod: { startDate: string; endDate: string } & ActivityAverages;
+  previousPeriod: { startDate: string; endDate: string } & ActivityAverages;
 }

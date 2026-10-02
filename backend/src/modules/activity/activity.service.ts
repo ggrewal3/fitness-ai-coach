@@ -1,13 +1,23 @@
 import { ActivitySource, Prisma } from "../../generated/prisma/client.js";
+import {
+  fromDateColumn,
+  isWithinRange,
+  rollingWeekPeriods,
+  spanningRange,
+  toDateColumn,
+  trailingRange,
+  type CalendarDate,
+  type DateRange,
+} from "../../lib/dates/calendarDate.js";
 import prisma from "../../lib/prisma.js";
 import type {
-  ActivityHistorySummaryResult,
+  ActivityAverages,
+  ActivityGroundingEntry,
+  ActivityGroundingResult,
   CreateDailyActivityInput,
   DailyActivityResponse,
   UpdateDailyActivityInput,
 } from "./activity.types.js";
-
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const dailyActivitySelect = {
   id: true,
@@ -104,62 +114,49 @@ export async function getDailyActivities(
   });
 }
 
-export async function getActivityHistorySummary(
-  userId: number,
-  days: number
-): Promise<ActivityHistorySummaryResult> {
-  const now = new Date();
-  const cutoff = new Date(now.getTime() - days * MILLISECONDS_PER_DAY);
+function summarizeActivity(entries: ActivityGroundingEntry[]): ActivityAverages {
+  return {
+    loggedDays: entries.length,
+    averageSteps: entries.length > 0 ? Math.round(entries.reduce((sum, entry) => sum + entry.steps, 0) / entries.length) : null,
+    averageWalkingDistanceKm: averageNullable(entries.map((entry) => entry.walkingDistanceKm), roundMetric),
+    averageActiveCalories: averageNullable(entries.map((entry) => entry.activeCalories), Math.round),
+  };
+}
 
-  const entries = await prisma.dailyActivity.findMany({
+/**
+ * Daily activity for the AI coach on logical days (activityDate, ADR-021),
+ * anchored to the client's today. Only logged days are listed; averages run
+ * over logged days, never treating a missing day as zero.
+ */
+export async function getActivityGrounding(
+  userId: number,
+  { today, days }: { today: CalendarDate; days: number }
+): Promise<ActivityGroundingResult> {
+  const window = trailingRange(today, days);
+  const periods = rollingWeekPeriods(today);
+  const queryRange = spanningRange(window, periods.previous);
+
+  const rows = await prisma.dailyActivity.findMany({
     where: {
       userId,
-      recordedAt: {
-        gte: cutoff,
-      },
+      activityDate: { gte: toDateColumn(queryRange.startDate), lte: toDateColumn(queryRange.endDate) },
     },
-    select: {
-      steps: true,
-      walkingDistanceKm: true,
-      activeCalories: true,
-      source: true,
-      recordedAt: true,
-    },
-    orderBy: {
-      recordedAt: "asc",
-    },
+    select: { activityDate: true, steps: true, walkingDistanceKm: true, activeCalories: true },
+    orderBy: { activityDate: "desc" },
   });
 
-  if (entries.length === 0) {
-    return {
-      found: false,
-      requestedDays: days,
-      summary: null,
-      entries: [],
-    };
-  }
-
-  const totalSteps = entries.reduce((sum, entry) => sum + entry.steps, 0);
-  const latestEntry = entries[entries.length - 1];
+  const entries: ActivityGroundingEntry[] = rows.map(({ activityDate, ...entry }) => ({
+    date: fromDateColumn(activityDate),
+    ...entry,
+  }));
+  const within = (range: DateRange) => entries.filter((entry) => isWithinRange(entry.date, range));
 
   return {
-    found: true,
+    today,
     requestedDays: days,
-    summary: {
-      averageSteps: Math.round(totalSteps / entries.length),
-      totalSteps,
-      averageWalkingDistanceKm: averageNullable(
-        entries.map((entry) => entry.walkingDistanceKm),
-        roundMetric
-      ),
-      averageActiveCalories: averageNullable(
-        entries.map((entry) => entry.activeCalories),
-        Math.round
-      ),
-      totalLoggedDays: entries.length,
-      latestSteps: latestEntry.steps,
-    },
-    entries,
+    window: { ...window, entries: within(window), ...summarizeActivity(within(window)) },
+    currentPeriod: { ...periods.current, ...summarizeActivity(within(periods.current)) },
+    previousPeriod: { ...periods.previous, ...summarizeActivity(within(periods.previous)) },
   };
 }
 

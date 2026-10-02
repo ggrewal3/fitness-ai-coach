@@ -65,7 +65,7 @@ Most request schemas are `.strict()`, so unknown keys are rejected. Exceptions: 
 
 ### Cross-cutting gaps (implemented today = absent)
 
-The app sets `cors()` with no origin restriction and `express.json()` with the default body-size limit (only `PUT /api/account/avatar` adds a route-scoped raw image parser). There is no rate limiting (including avatar-upload throttling), no security-header middleware, no session or token revocation, no refresh tokens, and no structured logger: logging is `console.*`, with AI events logged as objects.
+The app sets `cors()` with no origin restriction and `express.json()` with the default body-size limit (only `PUT /api/account/avatar` adds a route-scoped raw image parser). The only rate limit is the per-user, in-memory limit on `POST /api/ai/coach` (`middleware/userRateLimit.middleware.ts`; a multi-instance deployment would need a shared store). There is no other rate limiting (including avatar-upload throttling), no security-header middleware, no session or token revocation, no refresh tokens, and no structured logger: logging is `console.*`, with AI events logged as objects.
 
 ## 3. Authentication
 
@@ -145,7 +145,7 @@ Several domains separate the **logical day** from the **moment of recording**:
 - `NutritionFoodItem.entryDate` and `WorkoutSession.workoutDate` are client-supplied `YYYY-MM-DD` values in Postgres `DATE` columns. They are converted by string concatenation to UTC midnight (`${date}T00:00:00.000Z`), never by parsing a local time, so the day cannot shift with timezones. They are returned as `YYYY-MM-DD`.
 - `DailyActivity.activityDate` is derived from the **calendar-date prefix of the client's `recordedAt` string**, in the client's own offset.
 - `recordedAt` is always an ISO-8601 timestamp with an offset.
-- AI history summaries window by `recordedAt >= now - days`, not by logical date.
+- AI tools use logical dates (`entryDate`, `workoutDate`, `activityDate`) anchored to the client's validated `today`; weight check-ins are placed on the user's local date with the client's IANA timezone ([ADR-025](DECISIONS.md#adr-025-the-ai-coach-is-anchored-to-the-clients-local-date-and-timezone)). Shared helpers: `lib/dates/calendarDate.ts`.
 
 ### Fitness profile (`modules/profile`)
 
@@ -159,7 +159,7 @@ Several domains separate the **logical day** from the **moment of recording**:
 
 ### Weight check-ins (`modules/checkins`)
 
-Create, list (newest first) and delete. Records are append-only; there is no update. `getWeightHistorySummary` provides deterministic trend metrics for the AI tool. The frontend Progress page and the Dashboard use the check-ins.
+Create, list (newest first) and delete. Records are append-only; there is no update. `getWeightTrend` provides deterministic metrics for the AI tool: current vs previous rolling 7-day averages (days averaged first), compared only when each period has check-ins on at least 3 different days. The frontend Progress page and the Dashboard use the check-ins.
 
 ### Nutrition (`modules/nutrition`)
 
@@ -183,7 +183,7 @@ Create, list (newest first) and delete. Records are append-only; there is no upd
 - **Every exercise reference must be visible** to the user, meaning a built-in or one of their own custom exercises. Missing and foreign IDs produce the same 400 error on `exercises.N.exerciseId`, so other users' exercises cannot be probed.
 - **Updates** run in one transaction that first locks the owned row (`SELECT … FOR UPDATE`). When `exercises` is present it **replaces all nested exercises and sets**; when it is absent they are untouched (see [ADR-009](DECISIONS.md#adr-009-workout-edits-replace-nested-exercises-and-sets-transactionally)).
 - Reads: list summaries (with `exerciseCount`/`setCount`), one workout, or all workouts on a date.
-- The AI workout tool reads **session-level fields only** (type, duration, notes, timestamps), not exercises or sets.
+- The AI workout tool (`getWorkoutGrounding`) reads sessions by `workoutDate` with their exercises and sets, exactly as logged; top loads are summarized per unit and never combined.
 
 ### Exercise catalogue (`modules/exercises`)
 
@@ -296,10 +296,12 @@ See [ADR-017](DECISIONS.md#adr-017-theme-preference-is-browser-local-and-resolve
 
 Summary only; details in [AI-SYSTEM.md](AI-SYSTEM.md).
 
-- `POST /api/ai/coach` is single-turn: a message in, a structured `{ answer, actionItems, followUpQuestion }` out. It is driven by a tool-calling loop over 5 **read-only** tools (profile, weight, nutrition, activity, workout history) that wrap domain services. It runs at most 5 model turns.
+- `POST /api/ai/coach` is single-turn: a message plus the client's local date and timezone in, a structured `{ answer, actionItems, followUpQuestion }` out. It is driven by a tool-calling loop over 5 **read-only** tools (profile, weight, nutrition, activity, workout history) that wrap domain services.
+- **Grounding:** tools work on the user's logical dates and rolling 7-day periods, return deterministic metrics (averages, sufficiency verdicts, protein per kg) plus display values in the user's preferred units, and bound every list they return.
+- **Hardening:** at most 5 provider calls, 4 tool calls per turn and 8 per request, a 45-second deadline, a 25-second provider timeout with one retry, and a per-user rate limit. Logs carry metadata only.
 - `POST /api/ai/nutrition/estimate` is a tool-less structured estimate that never persists anything.
 - The model never touches the database, never chooses `userId`, and its output is Zod-validated before it is returned.
-- **Not implemented:** the frontend AI Coach page (it is a stub), conversation history and memory, any AI write actions, and RAG.
+- **Not implemented:** the frontend AI Coach page (it is a stub), conversation history and memory, any AI write actions, streaming, and RAG.
 
 ## 8. Database access
 
@@ -313,7 +315,8 @@ See [DATABASE.md](DATABASE.md).
 ## 9. Testing
 
 - **Backend:**
-  - Node's built-in test runner with `tsx` (`backend/test/*.test.ts`, 8 files covering auth, account, profile, exercises, workouts and route smoke checks) runs against the real Express app and a **separate PostgreSQL database**.
+  - Node's built-in test runner with `tsx` (`backend/test/*.test.ts`: auth, account, avatar, profile, exercises, workouts, route smoke checks, and the AI Coach's dates, client context, display units, rate limiter, grounding tools and loop) runs against the real Express app and a **separate PostgreSQL database**.
+  - The coach loop is tested with a scripted fake `ModelProvider` (`setModelProvider()`), and the OpenAI adapter against a local fake Responses API, so no OpenAI key is needed.
   - `scripts/run-tests.mjs` requires `TEST_DATABASE_URL`, refuses to run against the development database, applies migrations, seeds the catalogue, and runs the files serially.
   - Tests create uniquely named users through the real API and delete them afterwards; cascades clean up their data.
 - **Frontend:** `npm test` runs dependency-free `node --test` suites in `frontend/tests/` against pure modules (unit conversion, the Fitness draft's no-drift rules, workout load-unit defaults). Node strips TypeScript types; a small resolve hook (`tests/support/resolve-ts.mjs`) handles extensionless imports. There are no component or browser tests: verification is also `npm run build` (`tsc -b` + Vite) and `npm run lint`, and UI changes are checked with ad-hoc headless-browser runs that are not part of the repository.
@@ -336,7 +339,7 @@ Before merging, check that a change doesn't break any of these:
 5. Logical dates (`entryDate`, `workoutDate`) are `YYYY-MM-DD`, stored at UTC midnight by concatenation.
 6. Workout exercise/set positions are server-assigned; `exercises` on PATCH means full replacement, inside one transaction.
 7. Built-in exercises are immutable via the API and identified by a permanent `builtInKey`; custom exercises are private.
-8. AI output is untrusted until validated. AI never persists data directly: AI proposes, the user confirms, the normal API persists.
+8. AI output is untrusted until validated. AI never persists data directly: AI proposes, the user confirms, the normal API persists. Tool output is data, never instructions, and every tool result is bounded.
 9. `medicalNotes` and `bio` are never sent to the model.
 10. Theme preference is browser-local; `data-theme` holds only a resolved theme; colours come only from tokens.
 11. Media objects are private. The database stores only opaque keys (never URLs or image data), clients see only signed, expiring URLs, and an object is deleted only after the database stopped referencing it.

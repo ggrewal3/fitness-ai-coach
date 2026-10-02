@@ -54,13 +54,6 @@ export interface WorkoutSummaryResponse extends WorkoutSessionFields {
   setCount: number;
 }
 
-export interface WorkoutHistoryEntry {
-  trainingType: TrainingType;
-  durationMinutes: number;
-  notes: string | null;
-  recordedAt: Date;
-}
-
 export interface WorkoutTypeCounts {
   STRENGTH: number;
   CARDIO: number;
@@ -69,19 +62,56 @@ export interface WorkoutTypeCounts {
   OTHER: number;
 }
 
-export interface WorkoutHistorySummary {
-  totalSessions: number;
-  totalTrainingMinutes: number;
-  averageDurationMinutes: number;
-  sessionsByType: WorkoutTypeCounts;
-  latestTrainingType: TrainingType;
-  latestDurationMinutes: number;
-  latestRecordedAt: Date;
+/** A set exactly as stored: load and unit are never converted (ADR-007). */
+export interface WorkoutGroundingSet {
+  reps: number;
+  load: number | null;
+  loadUnit: LoadUnit | null;
 }
 
-export interface WorkoutHistorySummaryResult {
-  found: boolean;
+export interface WorkoutGroundingExercise {
+  exerciseId: number;
+  name: string;
+  isCustom: boolean;
+  sets: WorkoutGroundingSet[];
+}
+
+export interface WorkoutGroundingSession {
+  /** The logical training day (workoutDate). */
+  date: string;
+  title: string;
+  trainingType: TrainingType;
+  durationMinutes: number;
+  notes: string | null;
+  exercises: WorkoutGroundingExercise[];
+}
+
+export interface WorkoutGroundingPeriod {
+  startDate: string;
+  endDate: string;
+  sessions: number;
+  totalMinutes: number;
+  sessionsByType: WorkoutTypeCounts;
+}
+
+/** Per exercise over the window; top loads are kept per unit, never combined. */
+export interface WorkoutExerciseSummary {
+  name: string;
+  isCustom: boolean;
+  sessions: number;
+  totalSets: number;
+  totalReps: number;
+  topLoadKg: number | null;
+  topLoadLb: number | null;
+  lastPerformed: string;
+}
+
+export interface WorkoutGroundingResult {
+  today: string;
   requestedDays: number;
-  summary: WorkoutHistorySummary | null;
-  entries: WorkoutHistoryEntry[];
+  /** Sessions in the requested window, newest first. */
+  window: { startDate: string; endDate: string; sessions: WorkoutGroundingSession[] };
+  currentPeriod: WorkoutGroundingPeriod;
+  previousPeriod: WorkoutGroundingPeriod;
+  exerciseSummaries: WorkoutExerciseSummary[];
 }

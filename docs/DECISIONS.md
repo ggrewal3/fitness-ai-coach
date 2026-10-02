@@ -39,6 +39,7 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
 | ADR-022 | Backend tests run against a separate real PostgreSQL database | Accepted |
 | ADR-023 | Nutrition is stored per food item, not per day | Accepted |
 | ADR-024 | Private profile-photo object storage | Accepted |
+| ADR-025 | The AI Coach is anchored to the client's local date and timezone | Accepted |
 
 ---
 
@@ -131,6 +132,10 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - A value is converted to canonical units only when the user actually edits it: lb → kg rounded to 0.01 kg, feet and inches → cm rounded to 0.1 cm. Values typed in kg or cm are sent as typed.
   - Values converted only for display are never written back. Measurement fields track whether the user edited them and are compared in the units they are shown in, so 80 kg shown as 176.4 lb, or 180 cm shown as 5 ft 11 in, is never re-sent as 80.01 kg or 180.3 cm.
   - Changing a preference still never rewrites stored or historical data.
+- **Amendment (2026-10-02, AI Coach Phase 1A):** extends where display units apply; the decision is unchanged.
+  - AI tool results stay canonical (`weightKg`, `heightCm`, `averageChangeKg`, …). Alongside them, tools add deterministic display strings in the user's preferred units (`displayWeight`, `displayHeight`, …), and the system prompt names the preferred units. The model quotes those strings instead of converting.
+  - The backend's display helper (`lib/units/displayUnits.ts`) follows the same policy as the frontend, checked by a test. Signed changes round the magnitude, then apply the sign.
+  - This replaces the earlier AI-SYSTEM.md rule that unit preferences are never sent to the model; they are non-sensitive display metadata.
 
 ## ADR-007: Workout sets keep the unit they were entered in
 
@@ -329,6 +334,12 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - The model never has database access.
   - Tool failures return error objects to the model rather than throwing.
   - Adding a capability means adding a reviewed tool, not widening model access.
+- **Amendment (2026-10-02, AI Coach Phase 1A):** corrects and hardens the loop; the decision is unchanged.
+  - The loop actually made up to 6 provider calls and discarded the 6th response even when it was a valid answer. It now makes at most **5 provider calls**: a final answer on the 5th is accepted, and a further tool request on the 5th fails the request (502).
+  - New caps: at most 4 tool calls per model turn and 8 per request (extra calls get an error result), `days` at most 90, and one tool result at most 32,000 serialized characters. Identical calls in one request reuse the first result.
+  - Malformed tool arguments now become an error result instead of failing the whole request: the adapter uses `responses.create` with plain JSON tool definitions and FitAI parses the arguments.
+  - The provider has an explicit 25-second timeout and one retry, and the whole request has a 45-second deadline (504). The coach route has a per-user rate limit (429).
+  - Logs gain a request ID, turn and tool-call counts, tool names, `days`, outcomes and failure categories; still no message text or tool output.
 
 ## ADR-020: Emails are normalized to lowercase and read-only after registration
 
@@ -357,6 +368,10 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
 - **Consequences:**
   - The server never decides a user's "today"; the client does.
   - AI history windows use `recordedAt`, and the coach prompt forbids grouping workouts into calendar days without timezone context.
+- **Amendment (2026-10-02, AI Coach Phase 1A):** the last consequence changed; the decision is unchanged.
+  - AI tools now use logical dates: nutrition by `entryDate`, workouts by `workoutDate`, activity by `activityDate`, anchored to the client's validated `today` ([ADR-025](#adr-025-the-ai-coach-is-anchored-to-the-clients-local-date-and-timezone)). The earlier nutrition summary selected rows by `recordedAt` but grouped them by `entryDate`, which could misplace backfilled items.
+  - Weight check-ins have only `recordedAt`; they are placed on the user's calendar with the client's IANA timezone.
+  - The server still never decides the user's "today".
 
 ## ADR-022: Backend tests run against a separate real PostgreSQL database
 
@@ -422,3 +437,23 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - The Settings profile-photo frontend is implemented: choose or drop a photo, preview it in the same centred `object-fit: cover` circle the server crop produces, then save, replace or remove it through the endpoints above.
   - The client resolves root-relative `avatarUrl` values against the API origin and, when an image fails to load (for example an expired link), refetches the account once for a freshly signed URL before falling back to initials.
   - Client-side type, size and dimension checks are for UX only; server-side validation and re-encoding remain authoritative.
+
+## ADR-025: The AI Coach is anchored to the client's local date and timezone
+
+**Status:** Accepted (2026-10-02, AI Coach Phase 1A)
+
+- **Context:** Coaching questions are relative to the user's day: "this week", "yesterday", "today". The model was never told the date, and AI tools windowed data by `recordedAt` relative to the server clock, so these questions could not be answered reliably. Users do not store a timezone, and the server must not decide a user's "today" ([ADR-021](#adr-021-logical-calendar-dates-are-separate-from-recorded-timestamps)).
+- **Decision:**
+  - Every coach request carries `clientContext: { today: "YYYY-MM-DD", timeZone: "<IANA name>" }`, sent by the client per request and never stored.
+  - The server validates it: `today` must be a real date, `timeZone` a real IANA name (not a raw offset), and `today` within ±1 day of the server's current date in that timezone (clock skew around midnight is allowed; manipulated dates are rejected with 400).
+  - The validated values reach tools only through the server-side `ToolExecutionContext`; the model cannot change them. They also go into the system prompt ("Today is …").
+  - Periods are rolling: the 7 days ending today and the 7 days before them. No calendar-week semantics.
+  - Logical dates are used where they exist (`entryDate`, `workoutDate`, `activityDate`); timestamps (weight check-ins) are converted to local dates with the timezone, DST-aware.
+- **Rationale:**
+  - The client already decides logical dates for nutrition and workouts; this applies the same principle to AI questions without adding a stored timezone.
+  - Validating against the server clock keeps a forged date from shifting what the coach reports, while tolerating legitimate clock differences.
+  - Rolling periods are locale-independent and deterministic.
+- **Consequences:**
+  - The coach API requires `clientContext`; the frontend must send it (Phase 1C).
+  - Reasoning about dates more than about a day from the server clock is impossible through the coach, by design.
+  - The deterministic period metrics live in the domain services and are tested with fixed dates.

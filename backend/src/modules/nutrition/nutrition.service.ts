@@ -1,14 +1,24 @@
+import {
+  addDays,
+  datesInRange,
+  fromDateColumn,
+  rollingWeekPeriods,
+  spanningRange,
+  toDateColumn,
+  trailingRange,
+  type CalendarDate,
+  type DateRange,
+} from "../../lib/dates/calendarDate.js";
 import prisma from "../../lib/prisma.js";
 import type {
   CreateNutritionFoodItemInput,
   DailyNutritionSummary,
+  NutritionAverages,
   NutritionFoodItemResponse,
-  NutritionHistoryEntry,
-  NutritionHistorySummaryResult,
+  NutritionGroundingDay,
+  NutritionGroundingResult,
   UpdateNutritionFoodItemInput,
 } from "./nutrition.types.js";
-
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const nutritionFoodItemSelect = {
   id: true,
@@ -133,101 +143,113 @@ export async function getDailyNutritionSummary(
   };
 }
 
-// Preserves the pre-existing DATABASE FACTS -> deterministic backend
-// calculation -> AI interpretation contract used by getNutritionHistoryTool:
-// food items are grouped into per-day totals first (matching the old
-// one-row-per-day NutritionEntry semantics), and the same average/latest
-// math runs over those day-aggregates. totalLoggedDays therefore still means
-// "days with at least one logged food item", not "number of food items".
-export async function getNutritionHistorySummary(
-  userId: number,
-  days: number
-): Promise<NutritionHistorySummaryResult> {
-  const now = new Date();
-  const cutoff = new Date(now.getTime() - days * MILLISECONDS_PER_DAY);
+// Database facts -> deterministic backend calculation -> AI interpretation:
+// food items are grouped into per-day totals first, and averages run over
+// those day aggregates, so "logged days" means days with at least one item.
+type DayTotals = { calories: number; proteinGrams: number; carbsGrams: number; fatGrams: number };
 
-  const foodItems = await prisma.nutritionFoodItem.findMany({
+function sumItems(items: DayTotals[]): DayTotals {
+  const totals = items.reduce(
+    (sum, item) => ({
+      calories: sum.calories + item.calories,
+      proteinGrams: sum.proteinGrams + item.proteinGrams,
+      carbsGrams: sum.carbsGrams + item.carbsGrams,
+      fatGrams: sum.fatGrams + item.fatGrams,
+    }),
+    { calories: 0, proteinGrams: 0, carbsGrams: 0, fatGrams: 0 }
+  );
+
+  return {
+    calories: totals.calories,
+    proteinGrams: roundMetric(totals.proteinGrams),
+    carbsGrams: roundMetric(totals.carbsGrams),
+    fatGrams: roundMetric(totals.fatGrams),
+  };
+}
+
+/** Averages over logged, completed days only (unlogged days are not zero). */
+function averageOf(days: NutritionGroundingDay[]): NutritionAverages {
+  const logged = days.filter((day) => day.logged);
+  const average = (pick: (day: NutritionGroundingDay) => number | null) =>
+    logged.length > 0 ? roundMetric(logged.reduce((sum, day) => sum + (pick(day) ?? 0), 0) / logged.length) : null;
+
+  return {
+    loggedDays: logged.length,
+    averageCalories: average((day) => day.calories),
+    averageProteinGrams: average((day) => day.proteinGrams),
+    averageCarbsGrams: average((day) => day.carbsGrams),
+    averageFatGrams: average((day) => day.fatGrams),
+  };
+}
+
+/**
+ * Nutrition for the AI coach on logical days (entryDate, ADR-021), anchored
+ * to the client's today.
+ *
+ * Every date in the window is listed, with `logged: false` and null totals
+ * when nothing was logged, so missing days never read as zero intake. Today
+ * is in progress, so it is excluded from all averages. Today's and
+ * yesterday's foods are included in logging order; callers cap them.
+ */
+export async function getNutritionGrounding(
+  userId: number,
+  { today, days }: { today: CalendarDate; days: number }
+): Promise<NutritionGroundingResult> {
+  const window = trailingRange(today, days);
+  const periods = rollingWeekPeriods(today);
+  const queryRange = spanningRange(window, periods.previous);
+  const yesterday = addDays(today, -1);
+
+  const items = await prisma.nutritionFoodItem.findMany({
     where: {
       userId,
-      recordedAt: {
-        gte: cutoff,
-      },
+      entryDate: { gte: toDateColumn(queryRange.startDate), lte: toDateColumn(queryRange.endDate) },
     },
     select: {
-      entryDate: true,
+      foodName: true,
+      quantity: true,
+      unit: true,
       calories: true,
       proteinGrams: true,
       carbsGrams: true,
       fatGrams: true,
+      mealType: true,
+      entryDate: true,
     },
+    orderBy: [{ entryDate: "asc" }, { recordedAt: "asc" }, { id: "asc" }],
   });
 
-  if (foodItems.length === 0) {
-    return {
-      found: false,
-      requestedDays: days,
-      summary: null,
-      entries: [],
-    };
+  const byDate = new Map<CalendarDate, typeof items>();
+  for (const item of items) {
+    const date = fromDateColumn(item.entryDate);
+    byDate.set(date, [...(byDate.get(date) ?? []), item]);
   }
 
-  const dailyTotalsByDate = new Map<
-    string,
-    { calories: number; proteinGrams: number; carbsGrams: number; fatGrams: number }
-  >();
+  const dayOf = (date: CalendarDate): NutritionGroundingDay => {
+    const dayItems = byDate.get(date) ?? [];
 
-  for (const item of foodItems) {
-    const dateKey = toEntryDateString(item.entryDate);
-    const current = dailyTotalsByDate.get(dateKey) ?? {
-      calories: 0,
-      proteinGrams: 0,
-      carbsGrams: 0,
-      fatGrams: 0,
-    };
+    if (dayItems.length === 0) {
+      return { date, logged: false, itemCount: 0, calories: null, proteinGrams: null, carbsGrams: null, fatGrams: null };
+    }
 
-    dailyTotalsByDate.set(dateKey, {
-      calories: current.calories + item.calories,
-      proteinGrams: current.proteinGrams + item.proteinGrams,
-      carbsGrams: current.carbsGrams + item.carbsGrams,
-      fatGrams: current.fatGrams + item.fatGrams,
-    });
-  }
-
-  const entries: NutritionHistoryEntry[] = Array.from(dailyTotalsByDate.entries())
-    .sort(([dateA], [dateB]) => (dateA < dateB ? -1 : dateA > dateB ? 1 : 0))
-    .map(([dateKey, totals]) => ({
-      calories: totals.calories,
-      proteinGrams: roundMetric(totals.proteinGrams),
-      carbsGrams: roundMetric(totals.carbsGrams),
-      fatGrams: roundMetric(totals.fatGrams),
-      recordedAt: new Date(`${dateKey}T00:00:00.000Z`),
-    }));
-
-  const entryCount = entries.length;
-  const totals = entries.reduce(
-    (sum, entry) => ({
-      calories: sum.calories + entry.calories,
-      proteinGrams: sum.proteinGrams + entry.proteinGrams,
-      carbsGrams: sum.carbsGrams + entry.carbsGrams,
-      fatGrams: sum.fatGrams + entry.fatGrams,
-    }),
-    { calories: 0, proteinGrams: 0, carbsGrams: 0, fatGrams: 0 }
-  );
-  const latestEntry = entries[entryCount - 1];
+    return { date, logged: true, itemCount: dayItems.length, ...sumItems(dayItems) };
+  };
+  const completedDays = (range: DateRange) =>
+    datesInRange(range)
+      .filter((date) => date !== today)
+      .map(dayOf);
+  const foodsOn = (date: CalendarDate) =>
+    (byDate.get(date) ?? []).map(({ entryDate: _entryDate, ...food }) => food);
 
   return {
-    found: true,
+    today,
     requestedDays: days,
-    summary: {
-      averageCalories: roundMetric(totals.calories / entryCount),
-      averageProteinGrams: roundMetric(totals.proteinGrams / entryCount),
-      averageCarbsGrams: roundMetric(totals.carbsGrams / entryCount),
-      averageFatGrams: roundMetric(totals.fatGrams / entryCount),
-      totalLoggedDays: entryCount,
-      latestCalories: latestEntry.calories,
-      latestProteinGrams: latestEntry.proteinGrams,
-    },
-    entries,
+    window: { ...window, days: datesInRange(window).reverse().map(dayOf) },
+    windowAverages: averageOf(completedDays(window)),
+    currentPeriod: { ...periods.current, ...averageOf(completedDays(periods.current)) },
+    previousPeriod: { ...periods.previous, ...averageOf(completedDays(periods.previous)) },
+    todayDetail: { ...dayOf(today), isPartialDay: true, foods: foodsOn(today) },
+    yesterdayDetail: { ...dayOf(yesterday), isPartialDay: false, foods: foodsOn(yesterday) },
   };
 }
 

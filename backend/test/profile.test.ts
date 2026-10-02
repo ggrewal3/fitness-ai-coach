@@ -290,10 +290,17 @@ describe("PATCH /api/profile/me", () => {
 });
 
 describe("AI profile tool", () => {
-  it("keeps its output shape and never exposes medical notes", async () => {
+  const context = (userId: number, bodyWeightUnit: "KG" | "LB" = "KG", heightUnit: "CM" | "FT_IN" = "CM") => ({
+    userId,
+    today: "2026-06-15",
+    timeZone: "UTC",
+    units: { bodyWeightUnit, heightUnit },
+  });
+
+  it("returns profile facts with display units and never exposes medical notes", async () => {
     const user = await userWithProfile();
 
-    const result = await getUserProfileTool.execute({}, { userId: user.id });
+    const result = await getUserProfileTool.execute({}, context(user.id));
 
     assert.equal(result.found, true);
     assert.ok(result.found);
@@ -301,11 +308,34 @@ describe("AI profile tool", () => {
       "activityLevel",
       "age",
       "dietPreference",
+      "displayHeight",
+      "displayTargetWeight",
       "goal",
       "heightCm",
+      "isUnder18",
       "targetWeightKg",
     ]);
     assert.equal(result.profile.heightCm, 178);
+    assert.equal(result.profile.displayHeight, "178 cm");
+    assert.equal(result.profile.isUnder18, false);
     assert.ok(!JSON.stringify(result).includes("knee"));
+  });
+
+  it("uses the preferred display units and flags users under 18 on their own calendar", async () => {
+    // 18th birthday on 2026-06-16: still 17 on the user's 2026-06-15.
+    const user = await userWithProfile({ ...VALID_PROFILE, dateOfBirth: "2008-06-16", heightCm: 180, targetWeightKg: 80 });
+
+    const result = await getUserProfileTool.execute({}, context(user.id, "LB", "FT_IN"));
+    const birthday = await getUserProfileTool.execute({}, { ...context(user.id), today: "2026-06-16" });
+
+    assert.ok(result.found && birthday.found);
+    assert.equal(result.profile.age, 17);
+    assert.equal(result.profile.isUnder18, true);
+    assert.equal(birthday.profile.age, 18);
+    assert.equal(birthday.profile.isUnder18, false);
+    assert.equal(result.profile.heightCm, 180);
+    assert.equal(result.profile.displayHeight, "5 ft 11 in");
+    assert.equal(result.profile.targetWeightKg, 80);
+    assert.equal(result.profile.displayTargetWeight, "176.4 lb");
   });
 });

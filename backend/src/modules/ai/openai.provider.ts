@@ -3,12 +3,19 @@ import {
   zodResponsesFunction,
   zodTextFormat,
 } from "openai/helpers/zod";
-import type { ResponseInputItem } from "openai/resources/responses/responses.js";
+import type {
+  FunctionTool,
+  ResponseFormatTextJSONSchemaConfig,
+  ResponseInputItem,
+} from "openai/resources/responses/responses.js";
+import { PROVIDER_MAX_RETRIES, PROVIDER_TIMEOUT_MS } from "./coach.limits.js";
 import {
   ModelProviderError,
+  type ModelCallOptions,
   type ModelProvider,
   type ModelProviderSession,
   type ModelSessionRequest,
+  type ModelToolCall,
   type ModelToolResult,
   type ModelTurn,
 } from "./model.provider.js";
@@ -24,10 +31,12 @@ export class OpenAIProvider implements ModelProvider {
     const model = process.env.OPENAI_MODEL;
 
     if (!apiKey || !model) {
-      throw new ModelProviderError("OpenAI provider is not configured.");
+      throw new ModelProviderError("OpenAI provider is not configured.", "not_configured");
     }
 
-    this.client = new OpenAI({ apiKey });
+    // Explicit, so one slow call cannot hold a request for the SDK's
+    // 10-minute default; the coach also enforces an overall deadline.
+    this.client = new OpenAI({ apiKey, timeout: PROVIDER_TIMEOUT_MS, maxRetries: PROVIDER_MAX_RETRIES });
     this.model = model;
   }
 
@@ -38,9 +47,42 @@ export class OpenAIProvider implements ModelProvider {
   }
 }
 
+/** Plain JSON tool and format definitions: the SDK's auto-parsing would throw on bad arguments. */
+function toolDefinition(tool: ModelSessionRequest<unknown>["tools"][number]): FunctionTool {
+  const parseable = zodResponsesFunction({ name: tool.name, description: tool.description, parameters: tool.inputSchema });
+  return {
+    type: "function",
+    name: parseable.name,
+    description: parseable.description,
+    parameters: parseable.parameters,
+    strict: parseable.strict,
+  };
+}
+
+function textFormat(request: ModelSessionRequest<unknown>): ResponseFormatTextJSONSchemaConfig {
+  const parseable = zodTextFormat(request.responseSchema, request.schemaName);
+  return { type: "json_schema", name: parseable.name, schema: parseable.schema, strict: parseable.strict };
+}
+
+function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function toProviderError(error: unknown): ModelProviderError {
+  if (error instanceof ModelProviderError) return error;
+  if (error instanceof OpenAI.APIConnectionTimeoutError) return new ModelProviderError("OpenAI request timed out.", "timeout");
+  if (error instanceof OpenAI.APIUserAbortError) return new ModelProviderError("OpenAI request was aborted.", "aborted");
+  return new ModelProviderError();
+}
+
 class OpenAIProviderSession<T> implements ModelProviderSession<T> {
   private readonly input: ResponseInputItem[] = [];
-  private readonly tools;
+  private readonly tools: FunctionTool[];
+  private readonly format: ResponseFormatTextJSONSchemaConfig;
 
   constructor(
     private readonly client: OpenAI,
@@ -51,22 +93,17 @@ class OpenAIProviderSession<T> implements ModelProviderSession<T> {
       role: "user",
       content: request.userMessage,
     });
-
-    this.tools = request.tools.map((tool) =>
-      zodResponsesFunction({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.inputSchema,
-      })
-    );
+    this.tools = request.tools.map(toolDefinition);
+    this.format = textFormat(request as ModelSessionRequest<unknown>);
   }
 
-  next(): Promise<ModelTurn> {
-    return this.requestModel();
+  next(options?: ModelCallOptions): Promise<ModelTurn> {
+    return this.requestModel(options);
   }
 
   async submitToolResults(
-    results: readonly ModelToolResult[]
+    results: readonly ModelToolResult[],
+    options?: ModelCallOptions
   ): Promise<ModelTurn> {
     for (const result of results) {
       this.input.push({
@@ -76,43 +113,30 @@ class OpenAIProviderSession<T> implements ModelProviderSession<T> {
       });
     }
 
-    return this.requestModel();
+    return this.requestModel(options);
   }
 
-  private async requestModel(): Promise<ModelTurn> {
+  private async requestModel(options?: ModelCallOptions): Promise<ModelTurn> {
     try {
-      const response = await this.client.responses.parse({
-        model: this.model,
-        instructions: this.request.systemPrompt,
-        input: this.input,
-        tools: this.tools,
-        text: {
-          format: zodTextFormat(
-            this.request.responseSchema,
-            this.request.schemaName
-          ),
+      const response = await this.client.responses.create(
+        {
+          model: this.model,
+          instructions: this.request.systemPrompt,
+          input: this.input,
+          tools: this.tools,
+          text: { format: this.format },
+          store: false,
         },
-        store: false,
+        { signal: options?.signal }
+      );
+
+      this.input.push(...(response.output as ResponseInputItem[]));
+
+      const toolCalls: ModelToolCall[] = response.output.flatMap((item) => {
+        if (item.type !== "function_call") return [];
+        const parsed = parseJson(item.arguments);
+        return [{ id: item.call_id, name: item.name, arguments: parsed.ok ? parsed.value : undefined, malformed: !parsed.ok }];
       });
-
-      const responseItems = response.output.map((item) => {
-        if (item.type !== "function_call") {
-          return item;
-        }
-
-        const { parsed_arguments: _parsedArguments, ...functionCall } = item;
-        return functionCall;
-      });
-
-      this.input.push(...(responseItems as ResponseInputItem[]));
-
-      const toolCalls = response.output
-        .filter((item) => item.type === "function_call")
-        .map((item) => ({
-          id: item.call_id,
-          name: item.name,
-          arguments: item.parsed_arguments,
-        }));
 
       const metadata = {
         model: response.model,
@@ -127,28 +151,22 @@ class OpenAIProviderSession<T> implements ModelProviderSession<T> {
       };
 
       if (toolCalls.length > 0) {
-        return {
-          type: "tool_calls",
-          toolCalls,
-          ...metadata,
-        };
+        return { type: "tool_calls", toolCalls, ...metadata };
       }
 
-      if (!response.output_parsed) {
-        throw new ModelProviderError("OpenAI returned no final output.");
-      }
+      const refusal = response.output.some(
+        (item) => item.type === "message" && item.content.some((content) => content.type === "refusal")
+      );
+      const parsed = response.output_text ? parseJson(response.output_text) : { ok: false as const };
 
       return {
         type: "final",
-        output: response.output_parsed,
+        output: parsed.ok ? parsed.value : undefined,
+        refusal,
         ...metadata,
       };
     } catch (error) {
-      if (error instanceof ModelProviderError) {
-        throw error;
-      }
-
-      throw new ModelProviderError();
+      throw toProviderError(error);
     }
   }
 }

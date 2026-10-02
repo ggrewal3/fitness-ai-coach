@@ -1,4 +1,13 @@
 import { Prisma, type LoadUnit } from "../../generated/prisma/client.js";
+import {
+  fromDateColumn,
+  isWithinRange,
+  rollingWeekPeriods,
+  spanningRange,
+  trailingRange,
+  type CalendarDate,
+  type DateRange,
+} from "../../lib/dates/calendarDate.js";
 import prisma from "../../lib/prisma.js";
 import { visibleExerciseWhere } from "../exercises/exercise.service.js";
 import type {
@@ -6,13 +15,14 @@ import type {
   UpdateWorkoutSessionInput,
   WorkoutDetailResponse,
   WorkoutExerciseInput,
-  WorkoutHistorySummaryResult,
+  WorkoutExerciseSummary,
+  WorkoutGroundingPeriod,
+  WorkoutGroundingResult,
+  WorkoutGroundingSession,
   WorkoutListQuery,
   WorkoutSummaryResponse,
   WorkoutTypeCounts,
 } from "./workout.types.js";
-
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const workoutDetailSelect = {
   id: true,
@@ -84,11 +94,6 @@ function normalizeNotes(notes: string | null | undefined): string | null | undef
   const trimmedNotes = notes.trim();
 
   return trimmedNotes === "" ? null : trimmedNotes;
-}
-
-function roundMetric(value: number): number {
-  const rounded = Number(value.toFixed(2));
-  return rounded === 0 ? 0 : rounded;
 }
 
 // Same convention as Nutrition's entryDate: the "YYYY-MM-DD" string maps to
@@ -280,73 +285,126 @@ export async function getWorkoutSessionsForDate(
   return rows.map(toDetailResponse);
 }
 
-export async function getWorkoutHistorySummary(
-  userId: number,
-  days: number
-): Promise<WorkoutHistorySummaryResult> {
-  const now = new Date();
-  const cutoff = new Date(now.getTime() - days * MILLISECONDS_PER_DAY);
+function emptyTypeCounts(): WorkoutTypeCounts {
+  return { STRENGTH: 0, CARDIO: 0, MOBILITY: 0, SPORT: 0, OTHER: 0 };
+}
 
-  const entries = await prisma.workoutSession.findMany({
-    where: {
-      userId,
-      recordedAt: {
-        gte: cutoff,
-      },
-    },
-    select: {
-      trainingType: true,
-      durationMinutes: true,
-      notes: true,
-      recordedAt: true,
-    },
-    orderBy: {
-      recordedAt: "asc",
-    },
-  });
+function summarizeWorkoutPeriod(
+  sessions: WorkoutGroundingSession[],
+  range: DateRange
+): WorkoutGroundingPeriod {
+  const inRange = sessions.filter((session) => isWithinRange(session.date, range));
+  const sessionsByType = emptyTypeCounts();
 
-  if (entries.length === 0) {
-    return {
-      found: false,
-      requestedDays: days,
-      summary: null,
-      entries: [],
-    };
-  }
-
-  const totalSessions = entries.length;
-  const totalTrainingMinutes = entries.reduce(
-    (sum, entry) => sum + entry.durationMinutes,
-    0
-  );
-  const latestEntry = entries[entries.length - 1];
-  const sessionsByType: WorkoutTypeCounts = {
-    STRENGTH: 0,
-    CARDIO: 0,
-    MOBILITY: 0,
-    SPORT: 0,
-    OTHER: 0,
-  };
-
-  for (const entry of entries) {
-    sessionsByType[entry.trainingType] += 1;
+  for (const session of inRange) {
+    sessionsByType[session.trainingType] += 1;
   }
 
   return {
-    found: true,
-    requestedDays: days,
-    summary: {
-      totalSessions,
-      totalTrainingMinutes,
-      averageDurationMinutes: roundMetric(
-        totalTrainingMinutes / totalSessions
-      ),
-      sessionsByType,
-      latestTrainingType: latestEntry.trainingType,
-      latestDurationMinutes: latestEntry.durationMinutes,
-      latestRecordedAt: latestEntry.recordedAt,
+    ...range,
+    sessions: inRange.length,
+    totalMinutes: inRange.reduce((sum, session) => sum + session.durationMinutes, 0),
+    sessionsByType,
+  };
+}
+
+/**
+ * Workouts for the AI coach on logical training days (workoutDate, ADR-021),
+ * anchored to the client's today.
+ *
+ * Sets keep their stored load and unit (ADR-007). Exercise summaries report
+ * the top load separately per unit; kg and lb are never combined, and no
+ * cross-unit volume or tonnage is computed. Callers cap the detailed lists.
+ */
+export async function getWorkoutGrounding(
+  userId: number,
+  { today, days }: { today: CalendarDate; days: number }
+): Promise<WorkoutGroundingResult> {
+  const window = trailingRange(today, days);
+  const periods = rollingWeekPeriods(today);
+  const queryRange = spanningRange(window, periods.previous);
+
+  const rows = await prisma.workoutSession.findMany({
+    where: {
+      userId,
+      workoutDate: { gte: toWorkoutDateValue(queryRange.startDate), lte: toWorkoutDateValue(queryRange.endDate) },
     },
-    entries,
+    select: {
+      title: true,
+      workoutDate: true,
+      trainingType: true,
+      durationMinutes: true,
+      notes: true,
+      exercises: {
+        orderBy: { position: "asc" },
+        select: {
+          exercise: { select: { id: true, name: true, userId: true } },
+          sets: { orderBy: { position: "asc" }, select: { reps: true, load: true, loadUnit: true } },
+        },
+      },
+    },
+    orderBy: [{ workoutDate: "desc" }, { recordedAt: "desc" }, { id: "desc" }],
+  });
+
+  const sessions: WorkoutGroundingSession[] = rows.map((row) => ({
+    date: fromDateColumn(row.workoutDate),
+    title: row.title,
+    trainingType: row.trainingType,
+    durationMinutes: row.durationMinutes,
+    notes: row.notes,
+    exercises: row.exercises.map((entry) => ({
+      exerciseId: entry.exercise.id,
+      name: entry.exercise.name,
+      isCustom: entry.exercise.userId !== null,
+      sets: entry.sets.map((set) => ({
+        reps: set.reps,
+        load: set.load === null ? null : set.load.toNumber(),
+        loadUnit: set.loadUnit,
+      })),
+    })),
+  }));
+  const windowSessions = sessions.filter((session) => isWithinRange(session.date, window));
+
+  const summaries = new Map<number, WorkoutExerciseSummary>();
+  for (const session of windowSessions) {
+    for (const entry of session.exercises) {
+      const summary = summaries.get(entry.exerciseId) ?? {
+        name: entry.name,
+        isCustom: entry.isCustom,
+        sessions: 0,
+        totalSets: 0,
+        totalReps: 0,
+        topLoadKg: null,
+        topLoadLb: null,
+        lastPerformed: session.date,
+      };
+
+      summary.sessions += 1;
+      summary.totalSets += entry.sets.length;
+      for (const set of entry.sets) {
+        summary.totalReps += set.reps;
+        if (set.load !== null && set.loadUnit === "KG") summary.topLoadKg = Math.max(summary.topLoadKg ?? 0, set.load);
+        if (set.load !== null && set.loadUnit === "LB") summary.topLoadLb = Math.max(summary.topLoadLb ?? 0, set.load);
+      }
+      if (session.date > summary.lastPerformed) summary.lastPerformed = session.date;
+      summaries.set(entry.exerciseId, summary);
+    }
+  }
+
+  return {
+    today,
+    requestedDays: days,
+    window: { ...window, sessions: windowSessions },
+    currentPeriod: summarizeWorkoutPeriod(sessions, periods.current),
+    previousPeriod: summarizeWorkoutPeriod(sessions, periods.previous),
+    // Most frequent first, then most recent, then name: deterministic.
+    exerciseSummaries: [...summaries.values()].sort(
+      (a, b) =>
+        b.sessions - a.sessions ||
+        b.totalSets - a.totalSets ||
+        (a.lastPerformed < b.lastPerformed ? 1 : a.lastPerformed > b.lastPerformed ? -1 : 0) ||
+        (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+    ),
   };
 }
 

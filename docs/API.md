@@ -211,12 +211,17 @@ Both endpoints are authenticated, read/compute only, and **never persist data**.
 
 | Method | Path | Request | Success |
 |---|---|---|---|
-| POST | `/api/ai/coach` | `message` (trimmed, 1–2000; not strict) | `200 { answer, actionItems: string[≤5], followUpQuestion: string \| null }` |
+| POST | `/api/ai/coach` | strict: `message` (trimmed, 1–2000), `clientContext: { today, timeZone }` | `200 { answer, actionItems: string[≤5], followUpQuestion: string \| null }` |
 | POST | `/api/ai/nutrition/estimate` | strict: `foodName` (1–200), `quantity` (> 0), `unit` (1–20) | `200 { foodName, quantity, unit, calories, proteinGrams, carbsGrams, fatGrams, note }` |
 
 - **Coach:** single-turn, with no conversation history. The coach may call read-only tools over the caller's own data.
+  - `clientContext.today` is the user's local date (`YYYY-MM-DD`) and `clientContext.timeZone` an IANA name (e.g. `Europe/London`; raw offsets are rejected). `today` must be within ±1 day of the server's current date in that timezone. Field errors use paths such as `clientContext.today`; unknown top-level keys are rejected (field `body`).
+  - Rate limited per user: 10 requests per minute and 150 per day. Every authenticated request counts, including invalid ones and ones that fail upstream; refused (429) requests do not.
 - **Estimate:** `foodName`, `quantity` and `unit` are echoed from the request, never from the model. The result is a proposal; saving it is a separate `POST /api/nutrition` (typically with `source: "AI_TEXT"`).
 - **Errors:**
-  - Provider unavailable or unconfigured, or the tool loop is exhausted → `503` ("AI Coach is temporarily unavailable." / "Nutrition estimation is temporarily unavailable.").
-  - Model output fails schema validation → `502`.
+  - Provider unavailable, unconfigured or timed out → `503` ("AI Coach is temporarily unavailable." / "Nutrition estimation is temporarily unavailable.").
+  - Model output fails schema validation, or the model refuses → `502` ("AI Coach returned an invalid response.").
+  - Coach only: the model still asks for tools on its last permitted turn → `502` ("AI Coach couldn't complete a response. Try asking a more specific question.").
+  - Coach only: the 45-second request deadline passes → `504` ("AI Coach took too long to respond. Please try again.").
+  - Coach only: rate limit → `429` with `Retry-After` (seconds) and a message.
 - The frontend uses the estimate endpoint (Nutrition modal) but not the coach endpoint yet.

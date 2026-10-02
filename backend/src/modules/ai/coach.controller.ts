@@ -4,7 +4,7 @@ import {
   ModelOutputValidationError,
   ModelProviderError,
 } from "./model.provider.js";
-import { generateCoachResponse } from "./coach.service.js";
+import { CoachDeadlineError, CoachTurnLimitError, generateCoachResponse } from "./coach.service.js";
 import type { CoachRequest } from "./coach.types.js";
 
 export async function coach(
@@ -18,13 +18,25 @@ export async function coach(
   }
 
   try {
-    const response = await generateCoachResponse(
+    const { response } = await generateCoachResponse(
       req.userId,
       req.body as CoachRequest
     );
 
     return res.status(200).json(response);
   } catch (error) {
+    if (error instanceof CoachDeadlineError) {
+      return res.status(504).json({
+        message: "AI Coach took too long to respond. Please try again.",
+      });
+    }
+
+    if (error instanceof CoachTurnLimitError) {
+      return res.status(502).json({
+        message: "AI Coach couldn't complete a response. Try asking a more specific question.",
+      });
+    }
+
     if (error instanceof ModelProviderError) {
       return res.status(503).json({
         message: "AI Coach is temporarily unavailable.",
