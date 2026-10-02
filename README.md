@@ -35,9 +35,10 @@ Frontend:
 - Login and signup, a protected application shell with a responsive sidebar and mobile drawer
 - Dashboard, Progress (weight check-ins), Nutrition (with AI-assisted entry), and Workout logging with an exercise picker
 - Settings: profile photo (preview before saving, change, remove), profile and contact details, bio, fitness profile, unit preferences, appearance, connection status, and sign-out
+- Unit preferences applied across the app: body weight in kg or lb, height in cm or feet and inches, and the default unit for new workout exercises (logged sets keep their own unit)
 - Light, Dark, and System themes
 
-Not yet in the frontend: the AI Coach chat and activity. These exist only as backend APIs or stub pages. Unit preferences are saved but not yet applied to other screens.
+Not yet in the frontend: the AI Coach chat and activity. These exist only as backend APIs or stub pages.
 
 ## Architecture
 
@@ -129,7 +130,6 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for environment variables, the mi
 
 ### Near-Term
 
-- Apply unit preferences across Progress, Dashboard, and Workout
 - Frontend AI Coach experience
 - Remaining user-facing fitness tracking workflows (activity)
 - Progress and photo workflows

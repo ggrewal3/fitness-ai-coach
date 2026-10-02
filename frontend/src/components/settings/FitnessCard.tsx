@@ -5,26 +5,33 @@ import {
   ACTIVITY_OPTIONS,
   DIET_OPTIONS,
   GOAL_OPTIONS,
-  HEIGHT_CM_MAX,
-  HEIGHT_CM_MIN,
-  TARGET_WEIGHT_KG_MAX,
-  TARGET_WEIGHT_KG_MIN,
   ageFromDateOfBirth,
   dateOfBirthBounds,
   fitnessChanges,
   fitnessDraftFromProfile,
+  fitnessErrorKey,
+  sameFitnessUnits,
+  targetWeightHint,
+  targetWeightRange,
+  updateFitnessDraft,
   validateFitness,
   type FitnessDraft,
+  type FitnessDraftField,
+  type FitnessUnits,
 } from '../../features/settings/fitnessDraft'
+import { bodyWeightUnitLabel, heightUnitLabel } from '../../features/units/unitFormat'
 import type { FieldErrors } from '../../features/settings/profileDraft'
 import { describeSaveFailure, focusFirstError, useSavedFlash } from '../../features/settings/saveFeedback'
 import ChoiceGroup, { type ChoiceOption } from '../ui/ChoiceGroup'
 import { AlertIcon, BalanceIcon, DumbbellIcon, FlameIcon, InfoIcon } from '../ui/icons'
+import HeightField from './HeightField'
 import SettingsCard, { SaveFooter } from './SettingsCard'
 import SettingsField from './SettingsField'
 
 type FitnessCardProps = {
   profile: FitnessProfile | null
+  /** The user's current preferred units. */
+  units: FitnessUnits
   onSaved: (profile: FitnessProfile) => void
   onDirtyChange: (isDirty: boolean) => void
   announce: (message: string) => void
@@ -61,16 +68,36 @@ const activityChoices = ACTIVITY_OPTIONS.map((option) => ({
   visual: <LevelMeter level={option.level} />,
 }))
 
-function FitnessCard({ profile, onSaved, onDirtyChange, announce }: FitnessCardProps) {
-  const [draft, setDraft] = useState<FitnessDraft>(() => fitnessDraftFromProfile(profile))
+/** "target weight in kg and height in cm": the draft's units that differ from the preference. */
+function staleUnitsText(draftUnits: FitnessUnits, units: FitnessUnits): string {
+  const parts: string[] = []
+  if (draftUnits.bodyWeightUnit !== units.bodyWeightUnit) {
+    parts.push(`target weight in ${bodyWeightUnitLabel(draftUnits.bodyWeightUnit)}`)
+  }
+  if (draftUnits.heightUnit !== units.heightUnit) parts.push(`height in ${heightUnitLabel(draftUnits.heightUnit)}`)
+  return parts.join(' and ')
+}
+
+function FitnessCard({ profile, units, onSaved, onDirtyChange, announce }: FitnessCardProps) {
+  const [storedDraft, setDraft] = useState<FitnessDraft>(() => fitnessDraftFromProfile(profile, units))
   const [errors, setErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isSaved, flashSaved] = useSavedFlash()
   const bounds = useMemo(() => dateOfBirthBounds(), [])
 
+  // A clean draft always follows the current units (rebuilt from the saved
+  // profile, so it stays clean). A dirty draft keeps the units it was typed in
+  // until Save or Cancel, so nothing the user typed is converted underneath them.
+  const isStoredDirty = Object.keys(fitnessChanges(storedDraft, profile)).length > 0
+  const draft =
+    isStoredDirty || sameFitnessUnits(storedDraft.units, units)
+      ? storedDraft
+      : fitnessDraftFromProfile(profile, units)
   const changes = fitnessChanges(draft, profile)
   const isDirty = Object.keys(changes).length > 0
+  const staleUnits = sameFitnessUnits(draft.units, units) ? '' : staleUnitsText(draft.units, units)
+  const weightRange = targetWeightRange(draft.units.bodyWeightUnit)
   const age = ageFromDateOfBirth(draft.dateOfBirth)
   const hasProfile = profile !== null
 
@@ -78,24 +105,26 @@ function FitnessCard({ profile, onSaved, onDirtyChange, announce }: FitnessCardP
     onDirtyChange(isDirty)
   }, [isDirty, onDirtyChange])
 
-  function update<K extends keyof FitnessDraft>(field: K, value: FitnessDraft[K]) {
-    const next = { ...draft, [field]: value }
+  function update<K extends FitnessDraftField>(field: K, value: FitnessDraft[K]) {
+    const next = updateFitnessDraft(draft, field, value)
+    const errorKey = fitnessErrorKey(field)
     setDraft(next)
     setFormError(null)
 
-    if (errors[field]) {
-      const fieldError = validateFitness(next)[field]
+    if (errors[errorKey]) {
+      const fieldError = validateFitness(next)[errorKey]
       setErrors((current) => {
         const updated = { ...current }
-        if (fieldError) updated[field] = fieldError
-        else delete updated[field]
+        if (fieldError) updated[errorKey] = fieldError
+        else delete updated[errorKey]
         return updated
       })
     }
   }
 
+  // Save and Cancel adopt the current preferred units.
   function cancel() {
-    setDraft(fitnessDraftFromProfile(profile))
+    setDraft(fitnessDraftFromProfile(profile, units))
     setErrors({})
     setFormError(null)
   }
@@ -117,7 +146,7 @@ function FitnessCard({ profile, onSaved, onDirtyChange, announce }: FitnessCardP
       // Only changed fields are sent; the first save creates the profile.
       const saved = await saveFitnessProfile(hasProfile, changes)
       onSaved(saved)
-      setDraft(fitnessDraftFromProfile(saved))
+      setDraft(fitnessDraftFromProfile(saved, units))
       setErrors({})
       flashSaved()
       announce(hasProfile ? 'Fitness profile saved.' : 'Fitness profile created.')
@@ -158,6 +187,13 @@ function FitnessCard({ profile, onSaved, onDirtyChange, announce }: FitnessCardP
         </p>
       )}
 
+      {staleUnits && (
+        <p className="settings-note">
+          <InfoIcon size={18} />
+          <span>Showing {staleUnits} until you save or cancel.</span>
+        </p>
+      )}
+
       <div className="settings-field-grid settings-field-grid-3">
         <SettingsField
           id={fieldId('dateOfBirth')}
@@ -179,29 +215,18 @@ function FitnessCard({ profile, onSaved, onDirtyChange, announce }: FitnessCardP
           />
         </SettingsField>
 
-        <SettingsField id={fieldId('heightCm')} label="Height" hint={`${HEIGHT_CM_MIN}–${HEIGHT_CM_MAX} cm`} error={errors.heightCm}>
-          <div className="settings-input-suffix">
-            <input
-              id={fieldId('heightCm')}
-              className="settings-input"
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              min={HEIGHT_CM_MIN}
-              max={HEIGHT_CM_MAX}
-              value={draft.heightCm}
-              onChange={(event) => update('heightCm', event.target.value)}
-              aria-invalid={errors.heightCm ? true : undefined}
-              aria-describedby={describedBy('heightCm')}
-            />
-            <span aria-hidden="true">cm</span>
-          </div>
-        </SettingsField>
+        <HeightField
+          id={fieldId('heightCm')}
+          unit={draft.units.heightUnit}
+          draft={draft}
+          error={errors.heightCm}
+          onChange={update}
+        />
 
         <SettingsField
           id={fieldId('targetWeightKg')}
           label="Target weight"
-          hint={`${TARGET_WEIGHT_KG_MIN}–${TARGET_WEIGHT_KG_MAX} kg`}
+          hint={targetWeightHint(draft.units.bodyWeightUnit)}
           error={errors.targetWeightKg}
         >
           <div className="settings-input-suffix">
@@ -211,14 +236,14 @@ function FitnessCard({ profile, onSaved, onDirtyChange, announce }: FitnessCardP
               type="number"
               inputMode="decimal"
               step="0.1"
-              min={TARGET_WEIGHT_KG_MIN}
-              max={TARGET_WEIGHT_KG_MAX}
-              value={draft.targetWeightKg}
-              onChange={(event) => update('targetWeightKg', event.target.value)}
+              min={weightRange.min}
+              max={weightRange.max}
+              value={draft.targetWeight}
+              onChange={(event) => update('targetWeight', event.target.value)}
               aria-invalid={errors.targetWeightKg ? true : undefined}
               aria-describedby={describedBy('targetWeightKg')}
             />
-            <span aria-hidden="true">kg</span>
+            <span aria-hidden="true">{bodyWeightUnitLabel(draft.units.bodyWeightUnit)}</span>
           </div>
         </SettingsField>
       </div>

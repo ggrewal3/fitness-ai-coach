@@ -11,6 +11,7 @@ import UnitsCard from '../components/settings/UnitsCard'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { AlertIcon } from '../components/ui/icons'
 import Skeleton from '../components/ui/Skeleton'
+import { useUnitPreferences } from '../context/useUnitPreferences'
 import { useUnsavedChangesGuard } from '../features/navigation/useUnsavedChangesGuard'
 import {
   SETTINGS_SECTIONS,
@@ -71,6 +72,7 @@ function SettingsSkeleton() {
 }
 
 function SettingsPage() {
+  const { setPreferences } = useUnitPreferences()
   const [account, setAccount] = useState<Account | null>(null)
   const [accountState, setAccountState] = useState<LoadState>('loading')
   const [profile, setProfile] = useState<FitnessProfile | null>(null)
@@ -97,6 +99,8 @@ function SettingsPage() {
       if (accountResult.status === 'fulfilled') {
         setAccount(accountResult.value)
         setAccountState('ready')
+        // The freshest preferences in the app; share them with other pages.
+        setPreferences(accountResult.value.preferences)
       } else {
         setAccountState('error')
       }
@@ -114,7 +118,7 @@ function SettingsPage() {
     return () => {
       isCurrent = false
     }
-  }, [reloadToken])
+  }, [reloadToken, setPreferences])
 
   useEffect(() => {
     if (profileReloadToken === 0) {
@@ -221,9 +225,15 @@ function SettingsPage() {
       // Keep the initials; the image hook retries at most once.
     }
   }, [])
+  // Saved preferences apply immediately here and across the app (same tab).
+  // Only the saved field is merged, so concurrent saves of different rows
+  // can't undo each other whatever order their responses arrive in.
   const handlePreferencesSaved = useCallback(
-    (preferences: UnitPreferences) => setAccount((current) => (current ? { ...current, preferences } : current)),
-    [],
+    (saved: Partial<UnitPreferences>) => {
+      setAccount((current) => (current ? { ...current, preferences: { ...current.preferences, ...saved } } : current))
+      setPreferences(saved)
+    },
+    [setPreferences],
   )
 
   function sectionHeading(id: SettingsSectionId, label: string) {
@@ -306,6 +316,10 @@ function SettingsPage() {
               {profileState === 'ready' && (
                 <FitnessCard
                   profile={profile}
+                  units={{
+                    bodyWeightUnit: account.preferences.bodyWeightUnit,
+                    heightUnit: account.preferences.heightUnit,
+                  }}
                   onSaved={setProfile}
                   onDirtyChange={setFitnessDirty}
                   announce={announce}

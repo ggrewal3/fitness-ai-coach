@@ -15,8 +15,6 @@ import type {
   WorkoutExerciseInput,
 } from "../../services/workouts"
 
-export const DEFAULT_LOAD_UNIT: LoadUnit = "LB"
-
 // Mirrors backend/src/modules/workouts/workout.schemas.ts.
 export const WORKOUT_LIMITS = {
   maxTitleLength: 100,
@@ -46,6 +44,12 @@ export type WorkoutDraftExercise = {
 }
 
 export type WorkoutDraft = {
+  /**
+   * Unit for the first set of a newly added exercise: the user's
+   * workoutLoadUnit preference, captured when the draft is created so a later
+   * preference change never alters an open editor (ADR-007). Never sent.
+   */
+  newExerciseLoadUnit: LoadUnit
   title: string
   workoutDate: string
   trainingType: TrainingType
@@ -89,8 +93,9 @@ export function createDraftKey(prefix: string): string {
   return `${prefix}-${random}`
 }
 
-export function createEmptyDraft(workoutDate: string): WorkoutDraft {
+export function createEmptyDraft(workoutDate: string, newExerciseLoadUnit: LoadUnit): WorkoutDraft {
   return {
+    newExerciseLoadUnit,
     title: "",
     workoutDate,
     trainingType: "STRENGTH",
@@ -100,9 +105,14 @@ export function createEmptyDraft(workoutDate: string): WorkoutDraft {
   }
 }
 
-/** Converts a saved workout into an editable draft (keys derive from server ids). */
-export function draftFromWorkout(workout: WorkoutDetail): WorkoutDraft {
+/**
+ * Converts a saved workout into an editable draft (keys derive from server
+ * ids). Every stored set keeps its own unit; the preference is only used for
+ * bodyweight sets' (unsaved) unit selector and for newly added exercises.
+ */
+export function draftFromWorkout(workout: WorkoutDetail, newExerciseLoadUnit: LoadUnit): WorkoutDraft {
   return {
+    newExerciseLoadUnit,
     title: workout.title,
     workoutDate: workout.workoutDate,
     trainingType: workout.trainingType,
@@ -111,7 +121,7 @@ export function draftFromWorkout(workout: WorkoutDetail): WorkoutDraft {
     exercises: workout.exercises.map((workoutExercise) => {
       const unitInExercise =
         workoutExercise.sets.find((set) => set.loadUnit !== null)?.loadUnit ??
-        DEFAULT_LOAD_UNIT
+        newExerciseLoadUnit
 
       return {
         key: `exercise-${workoutExercise.id}`,
@@ -125,18 +135,6 @@ export function draftFromWorkout(workout: WorkoutDetail): WorkoutDraft {
       }
     }),
   }
-}
-
-function lastUnitInDraft(exercises: WorkoutDraftExercise[]): LoadUnit {
-  for (let index = exercises.length - 1; index >= 0; index -= 1) {
-    const sets = exercises[index].sets
-
-    if (sets.length > 0) {
-      return sets[sets.length - 1].loadUnit
-    }
-  }
-
-  return DEFAULT_LOAD_UNIT
 }
 
 function updateExercise(
@@ -180,7 +178,9 @@ export function workoutDraftReducer(
                 key: action.setKey,
                 reps: "",
                 load: "",
-                loadUnit: lastUnitInDraft(draft.exercises),
+                // A new exercise starts in the preferred unit, not whatever
+                // unit another exercise in this workout happens to use.
+                loadUnit: draft.newExerciseLoadUnit,
               },
             ],
           },
@@ -229,7 +229,7 @@ export function workoutDraftReducer(
               key: action.setKey,
               reps: previous?.reps ?? "",
               load: previous?.load ?? "",
-              loadUnit: previous?.loadUnit ?? lastUnitInDraft(draft.exercises),
+              loadUnit: previous?.loadUnit ?? draft.newExerciseLoadUnit,
             },
           ],
         }

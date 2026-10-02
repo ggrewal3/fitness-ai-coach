@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { UnitPreferencesProvider } from '../../context/UnitPreferencesContext'
 import Header from './Header'
 import Sidebar from './Sidebar'
 
@@ -61,29 +62,32 @@ function AppLayout() {
   }, [isNavOpen])
 
   return (
-    <div className="app-layout">
-      <Sidebar
-        isOpen={isNavOpen}
-        onClose={closeNav}
-        closeButtonRef={closeButtonRef}
-      />
-
-      {isNavOpen && (
-        <div className="nav-backdrop" aria-hidden="true" onClick={closeNav} />
-      )}
-
-      <div className="main-area" inert={isNavOpen}>
-        <Header
-          isNavOpen={isNavOpen}
-          onOpenNav={() => setIsNavOpen(true)}
-          menuButtonRef={menuButtonRef}
+    // Unit preferences are only needed (and only loadable) when signed in.
+    <UnitPreferencesProvider>
+      <div className="app-layout">
+        <Sidebar
+          isOpen={isNavOpen}
+          onClose={closeNav}
+          closeButtonRef={closeButtonRef}
         />
 
-        <main className="page-content">
-          <Outlet />
-        </main>
+        {isNavOpen && (
+          <div className="nav-backdrop" aria-hidden="true" onClick={closeNav} />
+        )}
+
+        <div className="main-area" inert={isNavOpen}>
+          <Header
+            isNavOpen={isNavOpen}
+            onOpenNav={() => setIsNavOpen(true)}
+            menuButtonRef={menuButtonRef}
+          />
+
+          <main className="page-content">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </UnitPreferencesProvider>
   )
 }
 

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import WorkoutEditor from '../components/workout/WorkoutEditor'
+import { useUnitPreferences } from '../context/useUnitPreferences'
 import { ApiRequestError } from '../services/api'
 import { getLocalDateString } from '../services/nutrition'
 import {
   addWorkout,
   editWorkout,
   fetchWorkout,
+  type LoadUnit,
   type WorkoutDetail,
 } from '../services/workouts'
 import {
@@ -15,8 +17,15 @@ import {
   draftToCreateInput,
   draftToUpdateInput,
   isValidDateString,
-  type WorkoutDraft,
 } from '../features/workout/workoutDraft'
+
+function LoadingView({ label }: { label: string }) {
+  return (
+    <div className="workout-editor-page">
+      <p className="nutrition-summary-status">{label}</p>
+    </div>
+  )
+}
 
 function CreateWorkoutView() {
   const [searchParams] = useSearchParams()
@@ -24,7 +33,19 @@ function CreateWorkoutView() {
   const [workoutDate] = useState(() =>
     dateParam && isValidDateString(dateParam) ? dateParam : getLocalDateString(new Date()),
   )
-  const [initialDraft] = useState(() => createEmptyDraft(workoutDate))
+  const { preferences, isLoading } = useUnitPreferences()
+
+  // The initial draft captures the preferred load unit, so wait for it.
+  if (isLoading) {
+    return <LoadingView label="Loading…" />
+  }
+
+  return <CreateWorkoutEditor workoutDate={workoutDate} loadUnit={preferences.workoutLoadUnit} />
+}
+
+function CreateWorkoutEditor({ workoutDate, loadUnit }: { workoutDate: string; loadUnit: LoadUnit }) {
+  // Built once: later preference changes never alter an open editor.
+  const [initialDraft] = useState(() => createEmptyDraft(workoutDate, loadUnit))
 
   return (
     <div className="workout-editor-page">
@@ -39,10 +60,9 @@ function CreateWorkoutView() {
   )
 }
 
-type LoadedWorkout = { workout: WorkoutDetail; draft: WorkoutDraft }
-
 function EditWorkoutView({ workoutId }: { workoutId: number | null }) {
-  const [loaded, setLoaded] = useState<LoadedWorkout | null>(null)
+  const { preferences, isLoading: isLoadingUnits } = useUnitPreferences()
+  const [loaded, setLoaded] = useState<WorkoutDetail | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isNotFound, setIsNotFound] = useState(workoutId === null)
 
@@ -54,7 +74,7 @@ function EditWorkoutView({ workoutId }: { workoutId: number | null }) {
     async function loadWorkout(id: number) {
       try {
         const workout = await fetchWorkout(id)
-        setLoaded({ workout, draft: draftFromWorkout(workout) })
+        setLoaded(workout)
       } catch (error) {
         if (error instanceof ApiRequestError && (error.status === 404 || error.status === 400)) {
           setIsNotFound(true)
@@ -98,21 +118,33 @@ function EditWorkoutView({ workoutId }: { workoutId: number | null }) {
     )
   }
 
-  if (!loaded || workoutId === null) {
-    return (
-      <div className="workout-editor-page">
-        <p className="nutrition-summary-status">Loading workout…</p>
-      </div>
-    )
+  if (!loaded || workoutId === null || isLoadingUnits) {
+    return <LoadingView label="Loading workout…" />
   }
+
+  return (
+    <EditWorkoutEditor
+      key={loaded.id}
+      workout={loaded}
+      workoutId={workoutId}
+      loadUnit={preferences.workoutLoadUnit}
+    />
+  )
+}
+
+type EditWorkoutEditorProps = { workout: WorkoutDetail; workoutId: number; loadUnit: LoadUnit }
+
+function EditWorkoutEditor({ workout, workoutId, loadUnit }: EditWorkoutEditorProps) {
+  // Built once: stored sets keep their own units; the preference only seeds
+  // new exercises, and later preference changes never alter this draft.
+  const [initialDraft] = useState(() => draftFromWorkout(workout, loadUnit))
 
   return (
     <div className="workout-editor-page">
       <WorkoutEditor
-        key={loaded.workout.id}
         mode="edit"
-        initialDraft={loaded.draft}
-        returnTo={`/workout?date=${loaded.workout.workoutDate}`}
+        initialDraft={initialDraft}
+        returnTo={`/workout?date=${workout.workoutDate}`}
         // Full replacement: session fields plus every exercise/set; recordedAt is unchanged.
         onSave={(draft) => editWorkout(workoutId, draftToUpdateInput(draft))}
       />

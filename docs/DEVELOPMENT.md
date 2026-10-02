@@ -119,7 +119,9 @@ Tests start the real app on an ephemeral port, create uniquely named users throu
 
 ### Frontend
 
-There are no automated frontend tests. Verification is build + lint, plus manual or ad-hoc browser checks. For UI work, check the documented breakpoints (1440, 1024, 768, 767, 640, 390, 320) and both themes.
+`npm test` (in `frontend/`) runs `node --test` on `tests/**/*.test.ts`. It needs no database and no extra dependency: Node strips TypeScript types, and `tests/support/resolve-ts.mjs` resolves the app's extensionless imports. Tests import only pure modules (no React, no `import.meta.env`), such as `features/units/` and the Settings and Workout drafts.
+
+There are no component or browser tests. Verification is tests + build + lint, plus manual or ad-hoc browser checks. For UI work, check the documented breakpoints (1440, 1024, 768, 767, 640, 390, 320) and both themes.
 
 ## Verification commands
 
@@ -134,6 +136,7 @@ TEST_DATABASE_URL="…" npm test
 
 # frontend
 cd frontend
+npm test                   # node --test, pure modules
 npm run build              # tsc -b + vite build
 npm run lint
 
@@ -146,7 +149,7 @@ git status --short
 
 1. **Scope:** the diff contains only the intended change. No `.env`, secrets, generated client, `dist/` or scratch files.
 2. **Backend:** typecheck, build and the full test suite pass. If the schema changed, the migration was rehearsed, applied, `migrate status` is clean and the diff is empty.
-3. **Frontend:** build and lint pass. UI changes were checked at the relevant widths and in Light and Dark.
+3. **Frontend:** tests, build and lint pass. UI changes were checked at the relevant widths and in Light and Dark.
 4. `git diff --check` is clean.
 5. **Docs:** if the change affects architecture, data ownership, API contracts, auth or security, external integrations, AI behavior, an invariant or an accepted decision, update the relevant `docs/*.md` (and add or supersede an ADR) in the same change. See [AGENTS.md](../AGENTS.md).
 6. Don't commit or push on behalf of someone else without being asked.

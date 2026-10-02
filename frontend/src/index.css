@@ -2545,6 +2545,13 @@ html:has(.workout-editor) {
   transform: translateY(-50%);
 }
 
+/* Height in feet and inches: two inputs sharing one label and message line. */
+.settings-height-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 /* One line is always reserved so errors replace helper text without layout shifts. */
 .settings-field-message {
   display: flex;
@@ -2984,6 +2991,11 @@ html:has(.settings-save-footer) {
 .settings-unit-row:first-child {
   padding-top: 0;
   border-top: 0;
+}
+
+/* The control keeps its natural width; a long description wraps instead. */
+.settings-unit-row > .segmented {
+  flex-shrink: 0;
 }
 
 .settings-unit-text {

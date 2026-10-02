@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useUnitPreferences } from '../context/useUnitPreferences'
+import { bodyWeightUnitLabel, formatBodyWeightValue } from '../features/units/unitFormat'
 import { Link } from 'react-router-dom'
 import AddFoodModal from '../components/nutrition/AddFoodModal'
 import { ApiRequestError } from '../services/api'
@@ -28,6 +30,8 @@ function formatRecordedDate(recordedAt: string) {
 }
 
 function DashboardPage() {
+  const { preferences, isLoading: isLoadingUnits } = useUnitPreferences()
+  const weightUnit = preferences.bodyWeightUnit
   const [summary, setSummary] = useState<DailyNutritionSummary | null>(null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(true)
   const [summaryError, setSummaryError] = useState<string | null>(null)
@@ -196,7 +200,7 @@ function DashboardPage() {
           <section className="dashboard-card dashboard-weight-card">
             <p className="nutrition-eyebrow">Latest weight</p>
 
-            {isLoadingWeight && (
+            {(isLoadingWeight || isLoadingUnits) && (
               <p className="nutrition-summary-status">Loading...</p>
             )}
 
@@ -206,13 +210,13 @@ function DashboardPage() {
               </p>
             )}
 
-            {!isLoadingWeight && !weightError && latestCheckIn && (
+            {!isLoadingWeight && !isLoadingUnits && !weightError && latestCheckIn && (
               <div className="dashboard-weight">
                 <div className="nutrition-summary-hero">
                   <span className="nutrition-summary-kcal">
-                    {latestCheckIn.weightKg}
+                    {formatBodyWeightValue(latestCheckIn.weightKg, weightUnit)}
                   </span>
-                  <span className="nutrition-summary-kcal-unit">kg</span>
+                  <span className="nutrition-summary-kcal-unit">{bodyWeightUnitLabel(weightUnit)}</span>
                 </div>
                 <p className="nutrition-summary-count">
                   Recorded {formatRecordedDate(latestCheckIn.recordedAt)}
@@ -220,7 +224,7 @@ function DashboardPage() {
               </div>
             )}
 
-            {!isLoadingWeight && !weightError && !latestCheckIn && (
+            {!isLoadingWeight && !isLoadingUnits && !weightError && !latestCheckIn && (
               <div className="nutrition-summary-empty">
                 <p className="nutrition-summary-empty-title">
                   No weight logged yet

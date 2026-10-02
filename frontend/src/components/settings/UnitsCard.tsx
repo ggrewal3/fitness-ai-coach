@@ -6,7 +6,8 @@ import SettingsCard from './SettingsCard'
 
 type UnitsCardProps = {
   preferences: UnitPreferences
-  onSaved: (preferences: UnitPreferences) => void
+  /** Receives only the confirmed field, so out-of-order responses can't reset other rows. */
+  onSaved: (preferences: Partial<UnitPreferences>) => void
   announce: (message: string) => void
 }
 
@@ -31,7 +32,7 @@ const ROWS: {
   {
     field: 'workoutLoadUnit',
     label: 'Workout load',
-    description: 'Default unit for new sets.',
+    description: 'New exercises start in your preferred unit. Existing workout sets stay exactly as logged.',
     options: [
       { value: 'KG', label: 'kg' },
       { value: 'LB', label: 'lb' },
@@ -40,7 +41,7 @@ const ROWS: {
   {
     field: 'heightUnit',
     label: 'Height',
-    description: 'How your height is shown.',
+    description: 'How your height is shown and entered.',
     options: [
       { value: 'CM', label: 'cm' },
       { value: 'FT_IN', label: 'ft · in' },
@@ -87,7 +88,7 @@ function UnitsCard({ preferences, onSaved, announce }: UnitsCardProps) {
     try {
       const saved = await saveUnitPreferences({ [field]: value } as Partial<UnitPreferences>)
       setValues((current) => ({ ...current, [field]: saved[field] }))
-      onSaved(saved)
+      onSaved({ [field]: saved[field] })
       setRowStatus(field, 'saved')
       announce(`${row?.label ?? 'Unit'} set to ${optionLabel}.`)
     } catch {
@@ -108,7 +109,7 @@ function UnitsCard({ preferences, onSaved, announce }: UnitsCardProps) {
       icon={<RulerIcon />}
       title="Units"
       titleId="settings-units-title"
-      description="Your preferred units. Some existing screens will continue showing their current units until unit support is completed."
+      description="Your preferred units are used across FitAI."
     >
       <div className="settings-unit-rows">
         {ROWS.map((row) => {

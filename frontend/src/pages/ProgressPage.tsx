@@ -1,4 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useUnitPreferences } from '../context/useUnitPreferences'
+import { checkInWeightToKg } from '../features/units/bodyWeightInput'
+import { bodyWeightUnitLabel, formatBodyWeight } from '../features/units/unitFormat'
 import { ApiRequestError } from '../services/api'
 import {
   addWeightCheckIn,
@@ -32,6 +35,9 @@ function formatRecordedAt(recordedAt: string) {
 }
 
 function ProgressPage() {
+  const { preferences, isLoading: isLoadingUnits } = useUnitPreferences()
+  const weightUnit = preferences.bodyWeightUnit
+  const weightLabel = bodyWeightUnitLabel(weightUnit)
   const [checkIns, setCheckIns] = useState<WeightCheckIn[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -86,12 +92,15 @@ function ProgressPage() {
     event.preventDefault()
     setFormError(null)
 
-    const weightKg = Number.parseFloat(weightInput)
+    // Entered in the preferred unit; sent as canonical kg.
+    const weight = checkInWeightToKg(weightInput, weightUnit)
 
-    if (!Number.isFinite(weightKg) || weightKg <= 0) {
-      setFormError('Enter a valid weight in kg.')
+    if (!weight.ok) {
+      setFormError(weight.message)
       return
     }
+
+    const weightKg = weight.kg
 
     const recordedAtDate = new Date(recordedAtInput)
 
@@ -141,7 +150,7 @@ function ProgressPage() {
       <section className="progress-card">
         <h2>Current weight</h2>
 
-        {isLoading && <p>Loading...</p>}
+        {(isLoading || isLoadingUnits) && <p>Loading...</p>}
 
         {!isLoading && loadError && (
           <p className="form-error" role="alert">
@@ -149,9 +158,9 @@ function ProgressPage() {
           </p>
         )}
 
-        {!isLoading && !loadError && latestCheckIn && (
+        {!isLoading && !isLoadingUnits && !loadError && latestCheckIn && (
           <p className="current-weight">
-            {latestCheckIn.weightKg} kg
+            {formatBodyWeight(latestCheckIn.weightKg, weightUnit)}
             <span className="header-label">
               {' '}
               as of {formatRecordedAt(latestCheckIn.recordedAt)}
@@ -175,33 +184,38 @@ function ProgressPage() {
           </p>
         )}
 
-        <form className="checkin-form" onSubmit={handleSubmit}>
-          <label>
-            Weight (kg)
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={weightInput}
-              onChange={(event) => setWeightInput(event.target.value)}
-              required
-            />
-          </label>
+        {/* Waits for unit preferences so the input never starts in the wrong unit. */}
+        {isLoadingUnits ? (
+          <p>Loading...</p>
+        ) : (
+          <form className="checkin-form" onSubmit={handleSubmit}>
+            <label>
+              Weight ({weightLabel})
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={weightInput}
+                onChange={(event) => setWeightInput(event.target.value)}
+                required
+              />
+            </label>
 
-          <label>
-            Date & time
-            <input
-              type="datetime-local"
-              value={recordedAtInput}
-              onChange={(event) => setRecordedAtInput(event.target.value)}
-              required
-            />
-          </label>
+            <label>
+              Date & time
+              <input
+                type="datetime-local"
+                value={recordedAtInput}
+                onChange={(event) => setRecordedAtInput(event.target.value)}
+                required
+              />
+            </label>
 
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Saving...' : 'Add check-in'}
-          </button>
-        </form>
+            <button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Add check-in'}
+            </button>
+          </form>
+        )}
       </section>
 
       <section className="progress-card">
@@ -217,11 +231,11 @@ function ProgressPage() {
           <p className="header-label">No weight history yet.</p>
         )}
 
-        {checkIns.length > 0 && (
+        {checkIns.length > 0 && !isLoadingUnits && (
           <ul className="checkin-list">
             {checkIns.map((checkIn) => (
               <li key={checkIn.id} className="checkin-item">
-                <span className="checkin-weight">{checkIn.weightKg} kg</span>
+                <span className="checkin-weight">{formatBodyWeight(checkIn.weightKg, weightUnit)}</span>
                 <span className="header-label checkin-date">
                   {formatRecordedAt(checkIn.recordedAt)}
                 </span>

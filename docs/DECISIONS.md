@@ -124,8 +124,13 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
 - **Rationale (Settings Phase 1 review):** One canonical unit keeps backend analytics and AI summaries unit-free (for example `averageChangePerWeekKg`), and avoids lossy repeated conversion of historical data.
 - **Consequences:**
   - Conversion happens only at the presentation and input edges. The exact factor is 1 lb = 0.45359237 kg.
-  - Applying preferences in the UI is not implemented yet.
+  - Applying preferences in the UI was not implemented when this was accepted; see the amendment below.
   - Tests assert that preference changes leave stored data untouched.
+- **Amendment (2026-10-02, Settings Phase 4):** implementation status only; the decision is unchanged.
+  - The frontend now shows and accepts body weight (Progress, Dashboard, Settings target weight) and height (Settings) in the preferred units. Storage and the API stay canonical kg and cm.
+  - A value is converted to canonical units only when the user actually edits it: lb → kg rounded to 0.01 kg, feet and inches → cm rounded to 0.1 cm. Values typed in kg or cm are sent as typed.
+  - Values converted only for display are never written back. Measurement fields track whether the user edited them and are compared in the units they are shown in, so 80 kg shown as 176.4 lb, or 180 cm shown as 5 ft 11 in, is never re-sent as 80.01 kg or 180.3 cm.
+  - Changing a preference still never rewrites stored or historical data.
 
 ## ADR-007: Workout sets keep the unit they were entered in
 
@@ -140,7 +145,13 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
 - **Consequences:**
   - Any cross-set analytics (volume, PRs) must normalize units at read time.
   - `workoutLoadUnit` only pre-selects the unit for new sets.
-  - The editor default unit (`DEFAULT_LOAD_UNIT = "LB"`) is a frontend constant.
+  - The editor default unit (`DEFAULT_LOAD_UNIT = "LB"`) was a frontend constant until Phase 4; see the amendment below.
+- **Amendment (2026-10-02, Settings Phase 4):** implementation status only; the decision is unchanged.
+  - `workoutLoadUnit` now sets the unit of the first set of a newly added exercise. The editor captures it when the workout draft is created, so a later preference change never alters an open editor.
+  - "Add set" still copies the previous set's load and unit.
+  - Existing sets keep their stored unit whatever the preference (100 kg × 8 stays 100 kg × 8 under an lb preference).
+  - Changing a set's unit selector changes only the label: 100 kg becomes 100 lb, never 220.46 lb.
+  - Workout history shows sets exactly as logged, with no conversion.
 
 ## ADR-008: Structured workouts: WorkoutSession → WorkoutExercise → WorkoutSet
 

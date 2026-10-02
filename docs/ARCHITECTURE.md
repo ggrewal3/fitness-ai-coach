@@ -97,8 +97,7 @@ User data is deliberately split across three models (see [ADR-005](DECISIONS.md#
   - `PATCH /api/account/profile` updates names, phone (normalized to E.164 style), country (validated ISO 3166-1 alpha-2) and bio (plain text). Email is read-only.
   - `PUT` / `DELETE /api/account/avatar` set and remove the profile photo. Account responses include `avatarUrl` (signed, expiring) but never `avatarKey`. See "Profile photos and private media" below.
 - **Unit preferences are presentation only.** Stored measurements are never converted when they change; see Measurement units below.
-- **Frontend:** the Settings page (`/settings`, see section 6) reads and edits the account, unit preferences, profile photo and fitness profile through these endpoints.
-- **Not implemented:** unit preferences are saved but not yet applied to other screens (Progress, Dashboard, Workout still show their current units). That is Phase 4.
+- **Frontend:** the Settings page (`/settings`, see section 6) reads and edits the account, unit preferences, profile photo and fitness profile through these endpoints. Other pages read the preferences through `UnitPreferencesProvider` (see "Unit preferences" in section 6).
 
 ### Profile photos and private media
 
@@ -136,6 +135,8 @@ See [ADR-024](DECISIONS.md#adr-024-private-profile-photo-object-storage).
 | Workout set load (`WorkoutSet.load` + `loadUnit`) | **exactly as entered**, with its own unit (KG or LB); never converted |
 
 Display/input conversion is a presentation concern driven by `UserPreference`. Changing a preference never rewrites history. See [ADR-006](DECISIONS.md#adr-006-canonical-metric-storage-units-are-display-preferences-only) and [ADR-007](DECISIONS.md#adr-007-workout-sets-keep-the-unit-they-were-entered-in).
+
+The frontend converts only at the display and input edge (`features/units/`), and only values the user actually edits are converted back: lb → kg rounded to 0.01 kg, feet and inches → cm rounded to 0.1 cm. A value converted just for display is never sent, so storage cannot drift.
 
 ### Calendar dates vs timestamps
 
@@ -201,7 +202,8 @@ frontend/src/
   main.tsx                  mounts <App/>, imports index.css
   App.tsx                   ThemeProvider > AuthProvider > RouterProvider
   app/router.tsx            routes (createBrowserRouter)
-  context/                  AuthContext + useAuth, ThemeContext + useTheme (context/hook split for react-refresh)
+  context/                  AuthContext + useAuth, ThemeContext + useTheme, UnitPreferencesContext +
+                            useUnitPreferences (context/hook split for react-refresh)
   services/api.ts           the only HTTP client: request(), types, error class
   services/*.ts             per-domain wrappers and pure helpers (checkins, nutrition, exercises, workouts,
                             account, fitnessProfile)
@@ -210,6 +212,7 @@ frontend/src/
                             profile-photo checks and useAvatarImage
   features/navigation/      useUnsavedChangesGuard (shared by the Workout editor and Settings)
   features/theme/theme.ts   theme preference and resolution logic
+  features/units/           pure unit conversion, parsing, ranges and formatting (no React)
   components/ui/            shared primitives: Modal, ConfirmDialog, ChoiceGroup, SegmentedControl,
                             Avatar, Skeleton, icons
   components/               layout (AppLayout, Header, Sidebar), auth, brand, nutrition, workout, settings
@@ -228,6 +231,7 @@ frontend/src/
   - It edits a single `WorkoutDraft` through `workoutDraftReducer` ([ADR-015](DECISIONS.md#adr-015-a-single-shared-workoutdraft-model-for-workout-entry)). Saving converts the draft into the API payload; editing sends the full exercise list, which the server uses for its replace semantics.
   - Unsaved changes are protected by the shared `useUnsavedChangesGuard` (see below).
   - Frontend limits mirror the backend schemas (`WORKOUT_LIMITS`); the backend remains authoritative.
+  - Load units ([ADR-007](DECISIONS.md#adr-007-workout-sets-keep-the-unit-they-were-entered-in)): the draft captures `workoutLoadUnit` when it is created (the page waits for preferences first) and uses it for the first set of each new exercise. "Add set" copies the previous set. Stored sets keep their unit, the unit selector changes only the label, and history shows sets as logged.
 - **Unsaved changes** (`features/navigation/useUnsavedChangesGuard.ts`):
   - Blocks in-app navigation that changes the path or query (links, sidebar/drawer, browser Back) and shows `ConfirmDialog`; reload or close gets the browser's `beforeunload` prompt. Hash-only changes are never blocked.
   - React Router allows one active blocker, so each page calls it **once** with its combined dirty state.
@@ -241,7 +245,8 @@ frontend/src/
 - **Sections:** Profile (hero, Personal information, About you), Fitness, Units, Appearance, Connections, Account. Section navigation is a sticky side list above 1100px and a sticky, horizontally scrollable chip row below. It uses plain links with `aria-current` (not tabs), follows scrolling, and supports deep links such as `/settings#units`. Card internals adapt with container queries.
 - **Save model:**
   - Personal information, About you (bio) and Fitness are **separate save boundaries**, each with its own Save/Cancel bar that appears only when that card is dirty. Each sends **only changed fields**, and the server response becomes the new baseline.
-  - Fitness creates the profile (`POST`) on first save and updates it (`PATCH`) afterwards. Cleared fields are sent as `null`. Height is entered in cm and target weight in kg until Phase 4.
+  - Fitness creates the profile (`POST`) on first save and updates it (`PATCH`) afterwards. Cleared fields are sent as `null`.
+  - Fitness height and target weight use the preferred units (height in cm, or whole feet and inches in a labelled group). The draft records the units it was built in and which measurements were edited. A measurement is sent only if it was edited and differs from the saved value shown in the same units, so converted display values never become dirty. A clean card follows a unit change at once; a dirty card keeps its units, with a short note, until Save or Cancel.
   - Units save immediately, optimistically, and roll back on failure. Appearance calls `setTheme()`.
   - Client validation mirrors the backend schemas; server field errors are shown on their fields; drafts survive failures.
   - One page-level unsaved-changes guard covers all three editable cards.
@@ -257,6 +262,18 @@ frontend/src/
   - SettingsPage stays the owner of the account. Successful uploads and removals replace it with the server response. A selected but unsaved photo is not part of the unsaved-changes guard.
   - **Expired or failed images** (`useAvatarImage`): the avatar hides the image and shows initials, refetches the account once (merging only `avatarUrl`), and retries once per photo. If that also fails it stays on initials, with no loop. An unloaded image is transparent, so a broken-image icon never appears.
 - **Not implemented:** interactive cropping, camera capture, an avatar in the app header, password change, account deletion, email change.
+
+### Unit preferences
+
+See [ADR-006](DECISIONS.md#adr-006-canonical-metric-storage-units-are-display-preferences-only) and [ADR-007](DECISIONS.md#adr-007-workout-sets-keep-the-unit-they-were-entered-in).
+
+- `UnitPreferencesProvider` (`context/UnitPreferencesContext.tsx`) is mounted by `AppLayout`, so only signed-in pages load preferences. It fetches `GET /api/account` once and exposes `{ preferences, isLoading, setPreferences }` through `useUnitPreferences()`.
+- If the request fails, the backend defaults (KG / LB / CM) are used; preferences only affect display, so this cannot corrupt data.
+- Settings keeps its own account fetch and pushes loaded or saved preferences into the provider, so the rest of the tab updates immediately. Once Settings has supplied preferences, a slower initial response cannot overwrite them.
+- Pages that render units (Progress, Dashboard, the Workout editor) wait for `isLoading` to finish, so no input starts in the wrong unit.
+- There is no cross-tab sync: other tabs pick up changes on their next load.
+- Applied to: body weight on Progress (current, history, add check-in, including the 500 kg / 1102.3 lb maximum), the Dashboard latest weight, and Settings target weight; height in Settings; the default unit for new workout exercises. Display uses at most one decimal (kg, lb, cm) or whole inches.
+- AI tools are unchanged and stay canonical (`weightKg`, `heightCm`); preferences are not sent to the model ([AI-SYSTEM.md](AI-SYSTEM.md)).
 
 ### Theme system
 
@@ -299,7 +316,7 @@ See [DATABASE.md](DATABASE.md).
   - Node's built-in test runner with `tsx` (`backend/test/*.test.ts`, 8 files covering auth, account, profile, exercises, workouts and route smoke checks) runs against the real Express app and a **separate PostgreSQL database**.
   - `scripts/run-tests.mjs` requires `TEST_DATABASE_URL`, refuses to run against the development database, applies migrations, seeds the catalogue, and runs the files serially.
   - Tests create uniquely named users through the real API and delete them afterwards; cascades clean up their data.
-- **Frontend:** no automated tests. Verification is `npm run build` (`tsc -b` + Vite) and `npm run lint`. UI changes are checked with ad-hoc headless-browser runs that are not part of the repository.
+- **Frontend:** `npm test` runs dependency-free `node --test` suites in `frontend/tests/` against pure modules (unit conversion, the Fitness draft's no-drift rules, workout load-unit defaults). Node strips TypeScript types; a small resolve hook (`tests/support/resolve-ts.mjs`) handles extensionless imports. There are no component or browser tests: verification is also `npm run build` (`tsc -b` + Vite) and `npm run lint`, and UI changes are checked with ad-hoc headless-browser runs that are not part of the repository.
 
 ## 10. Infrastructure
 
@@ -315,7 +332,7 @@ Before merging, check that a change doesn't break any of these:
 1. The identity is the JWT `userId`. It is never taken from the client or from model output.
 2. Every user-owned query is scoped by `userId`; resources owned by someone else return 404, the same as missing ones.
 3. The backend is authoritative for validation; frontend limits only mirror it.
-4. Stored measurements are canonical (kg, cm, km). Workout set loads keep their entered unit. Preferences never rewrite data.
+4. Stored measurements are canonical (kg, cm, km). Workout set loads keep their entered unit. Preferences never rewrite data, and a value converted only for display is never sent back.
 5. Logical dates (`entryDate`, `workoutDate`) are `YYYY-MM-DD`, stored at UTC midnight by concatenation.
 6. Workout exercise/set positions are server-assigned; `exercises` on PATCH means full replacement, inside one transaction.
 7. Built-in exercises are immutable via the API and identified by a permanent `builtInKey`; custom exercises are private.
