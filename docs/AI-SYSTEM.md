@@ -92,7 +92,8 @@ generateCoachResponse(userId, request)         whole request ≤ 45 s → 504
   - Only tools that ran successfully count (even if they found no data). Failed, unknown, invalid, cap-rejected and oversized calls are excluded.
   - The period is the window the tool was asked to review (`days` ending today, in the user's calendar); `profile` has null dates. Comparison periods and reference lookups a tool reads internally (such as a recent check-in for protein per kg) do not widen it.
   - One source per type, in order of first use; repeated or cached calls merge into the widest window. `[]` when no tool ran.
-- The frontend does **not** call this endpoint yet; `/ai-coach` is a stub page.
+- **Frontend** (`/ai-coach`, see [ARCHITECTURE.md](ARCHITECTURE.md)): the browser keeps the conversation in `sessionStorage["fitai.user.coach.conversation.v1"]`, scoped to the signed-in user and cleared on logout and on 401. It sends only completed exchanges as history (assistant turns flattened as answer, action items and follow-up question), computes `clientContext` at send time, and sends nothing when no valid IANA timezone is available. Answers and sources are rendered as plain text.
+- **429 countdown:** the backend exposes `Retry-After` through CORS (`exposedHeaders: ["Retry-After"]`), so the cross-origin frontend reads it and keeps Retry disabled, with a countdown, until it expires.
 
 ### Dates and periods
 
@@ -174,7 +175,6 @@ Listed only where existing code or docs point in this direction. None of this ex
 
 | Direction | Evidence | Constraints it must respect |
 |---|---|---|
-| **Frontend AI Coach experience** | AI Coach Phase 1C; `/ai-coach` stub page | Uses the existing `POST /api/ai/coach` contract. The client keeps the active conversation in `sessionStorage` (`fitai.coach.conversation.v1`, scoped to the signed-in user, cleared on logout and on 401), sends only completed exchanges as history, and flattens assistant turns as answer + action items + follow-up question |
 | **AI workout quick-log** | `workoutDraft.ts` header: a future quick-log source "should produce this same WorkoutDraft shape and hand it to the same editor" | The model's output must become a `WorkoutDraft` the user reviews in the normal editor and saves through `POST /api/workouts` (ADR-012, ADR-015). Free-text exercise names would have to be resolved to visible `Exercise` IDs using the existing normalization and find-or-create rules (ADR-011); no resolution design exists yet |
 | **Photo-based nutrition / progress photos** | `NutritionSource.AI_PHOTO` enum value; README roadmap "progress and photo workflows" | No upload, storage or vision pipeline exists. Estimates would follow the propose → confirm → persist pattern |
 | **Vetted fitness-knowledge retrieval (RAG)** | README roadmap ("small vetted fitness-knowledge retrieval layer") | Not designed. No vector store, embeddings or corpus exist |

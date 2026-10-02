@@ -180,3 +180,9 @@ export const CameraIcon = createIcon(
   </>,
   'CameraIcon',
 )
+
+export const SendIcon = createIcon(<path d="M4.5 12 19.5 5l-5 14.5-3-6.5zm7 1.5 8-8.5" />, 'SendIcon')
+
+export const ArrowDownIcon = createIcon(<path d="M12 5v14m-6-6 6 6 6-6" />, 'ArrowDownIcon')
+
+export const PlusIcon = createIcon(<path d="M12 5.5v13M5.5 12h13" />, 'PlusIcon')

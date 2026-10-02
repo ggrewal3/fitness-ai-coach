@@ -478,3 +478,8 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - The frontend (Phase 1C) owns the conversation: it keeps it per tab in `sessionStorage`, scoped to the signed-in user and cleared on logout and on 401, trims oldest-first to the limits, and sends only completed exchanges.
   - Each provider call re-sends the history (up to about 3,000 extra input tokens per call); the loop limits, deadline and rate limit are unchanged.
   - That follow-ups really re-query tools is model behavior, checked by the Phase 1D evaluations; the deterministic tests cover what the server enforces.
+- **Amendment (2026-10-02, AI Coach Phase 1C):** implementation status only; the decision is unchanged.
+  - The frontend Coach is implemented. The conversation lives in `sessionStorage["fitai.user.coach.conversation.v1"]` as `{ version, userId, messages }`: completed messages only, newest 60.
+  - User scoping: the `userId` is the stored token's claim (read without verification, used only to scope storage); a conversation for another user, another version or malformed data is discarded. Signing out (logout or a 401) clears every `fitai.user.*` key, a generic rule rather than Coach-specific auth code.
+  - History is built from completed messages only, within the limits above; a failed or in-flight question never enters it, and Retry resends the same question against the same history.
+  - `clientContext` is computed at send time; without a valid IANA timezone the request is not sent (no fallback timezone).

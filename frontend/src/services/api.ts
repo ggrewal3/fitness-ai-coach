@@ -1,3 +1,4 @@
+import { clearUserScopedStorage, readJwtUserId } from "../features/auth/userSession"
 import { resolveApiUrl } from "./apiUrl"
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(
@@ -19,17 +20,28 @@ export type ApiValidationError = {
 export class ApiRequestError extends Error {
   readonly status: number
   readonly errors: ApiValidationError[]
+  /** Seconds from the response's Retry-After header (e.g. on 429), if any. */
+  readonly retryAfterSeconds: number | null
 
   constructor(
     message: string,
     status: number,
     errors: ApiValidationError[] = [],
+    retryAfterSeconds: number | null = null,
   ) {
     super(message)
     this.name = "ApiRequestError"
     this.status = status
     this.errors = errors
+    this.retryAfterSeconds = retryAfterSeconds
   }
+}
+
+/** Retry-After as whole seconds: a delay ("30") or an HTTP date. */
+function parseRetryAfter(value: string | null): number | null {
+  if (!value) return null
+  const seconds = /^\d+$/.test(value.trim()) ? Number(value.trim()) : (Date.parse(value) - Date.now()) / 1000
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds) : null
 }
 
 let unauthorizedHandler: (() => void) | null = null
@@ -48,6 +60,21 @@ export function storeAuthToken(token: string) {
 
 export function clearStoredAuthToken() {
   sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+}
+
+/** Ends the browser side of a session: the token and all user-scoped storage. */
+export function clearUserSessionData() {
+  clearStoredAuthToken()
+  clearUserScopedStorage(sessionStorage)
+}
+
+/** The signed-in user's id from the stored token (unverified; for storage scoping only). */
+export function getStoredAuthUserId(): number | null {
+  try {
+    return readJwtUserId(getStoredAuthToken())
+  } catch {
+    return null
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -127,6 +154,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       message,
       response.status,
       getValidationErrors(errorBody.errors),
+      parseRetryAfter(response.headers.get("Retry-After")),
     )
   }
 
@@ -324,6 +352,43 @@ export async function estimateNutrition(
   return request<NutritionEstimateResult>("/api/ai/nutrition/estimate", {
     method: "POST",
     body: JSON.stringify(input),
+  })
+}
+
+// AI Coach (backend: modules/ai, ADR-025/ADR-026). History is client-held
+// text only; sources are derived by the server from successful tool runs.
+export type CoachSourceType = "profile" | "weight" | "nutrition" | "activity" | "workouts"
+
+export type CoachSource = {
+  type: CoachSourceType
+  /** YYYY-MM-DD in the user's calendar; null for the profile. */
+  startDate: string | null
+  endDate: string | null
+}
+
+export type CoachHistoryTurn = {
+  role: "user" | "assistant"
+  content: string
+}
+
+export type CoachRequestBody = {
+  message: string
+  clientContext: { today: string; timeZone: string }
+  history: CoachHistoryTurn[]
+}
+
+export type CoachReply = {
+  answer: string
+  actionItems: string[]
+  followUpQuestion: string | null
+  sources: CoachSource[]
+}
+
+export async function postCoachMessage(body: CoachRequestBody, signal?: AbortSignal): Promise<CoachReply> {
+  return request<CoachReply>("/api/ai/coach", {
+    method: "POST",
+    body: JSON.stringify(body),
+    signal,
   })
 }
 

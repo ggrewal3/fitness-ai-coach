@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react"
 import {
-  clearStoredAuthToken,
+  clearUserSessionData,
   getStoredAuthToken,
   loginUser,
   registerUser,
@@ -27,8 +27,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   )
 
   useEffect(() => {
+    // A 401 ends the session: the token and all user-scoped tab storage
+    // (e.g. the AI Coach conversation) are cleared.
     const handleUnauthorized = () => {
-      clearStoredAuthToken()
+      clearUserSessionData()
       setToken(null)
     }
 
@@ -52,7 +54,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   )
 
   const logout = useCallback(() => {
-    clearStoredAuthToken()
+    clearUserSessionData()
     setToken(null)
   }, [])
 

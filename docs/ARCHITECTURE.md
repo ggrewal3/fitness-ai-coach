@@ -65,7 +65,7 @@ Most request schemas are `.strict()`, so unknown keys are rejected. Exceptions: 
 
 ### Cross-cutting gaps (implemented today = absent)
 
-The app sets `cors()` with no origin restriction and `express.json()` with the default body-size limit (only `PUT /api/account/avatar` adds a route-scoped raw image parser). The only rate limit is the per-user, in-memory limit on `POST /api/ai/coach` (`middleware/userRateLimit.middleware.ts`; a multi-instance deployment would need a shared store). There is no other rate limiting (including avatar-upload throttling), no security-header middleware, no session or token revocation, no refresh tokens, and no structured logger: logging is `console.*`, with AI events logged as objects.
+The app sets `cors({ exposedHeaders: ["Retry-After"] })`, with no origin restriction and only `Retry-After` exposed to browser JavaScript (for the AI Coach's 429 countdown), and `express.json()` with the default body-size limit (only `PUT /api/account/avatar` adds a route-scoped raw image parser). The only rate limit is the per-user, in-memory limit on `POST /api/ai/coach` (`middleware/userRateLimit.middleware.ts`; a multi-instance deployment would need a shared store). There is no other rate limiting (including avatar-upload throttling), no security-header middleware, no session or token revocation, no refresh tokens, and no structured logger: logging is `console.*`, with AI events logged as objects.
 
 ## 3. Authentication
 
@@ -78,6 +78,8 @@ The app sets `cors()` with no origin restriction and `express.json()` with the d
   - The token is kept in `sessionStorage` under `fitai.auth.token` (see `frontend/src/services/api.ts`), so it is per-tab and cleared when the tab closes.
   - `AuthProvider` (`context/AuthContext.tsx`) exposes `useAuth()`.
   - Every request goes through `request()` in `services/api.ts`, which attaches the token. On any 401 it clears the token and calls the registered handler, which logs the user out.
+  - **Signing out** (explicit logout or a 401) calls `clearUserSessionData()`: it removes the token and every `sessionStorage` key starting with `fitai.user.` (`features/auth/userSession.ts`). Features keep per-tab, per-user data under that prefix (today: the AI Coach conversation) without the auth layer knowing about them.
+  - `ApiRequestError` carries the HTTP status, field errors and `retryAfterSeconds` (from a readable `Retry-After` header).
   - `ProtectedRoute` redirects unauthenticated users to `/login`.
 - There is no email verification, password change or reset, account deletion, session revocation, OAuth or rate limiting. Email cannot be changed.
 
@@ -203,7 +205,8 @@ frontend/src/
   App.tsx                   ThemeProvider > AuthProvider > RouterProvider
   app/router.tsx            routes (createBrowserRouter)
   context/                  AuthContext + useAuth, ThemeContext + useTheme, UnitPreferencesContext +
-                            useUnitPreferences (context/hook split for react-refresh)
+                            useUnitPreferences, CoachConversationContext + useCoachConversation
+                            (context/hook split for react-refresh)
   services/api.ts           the only HTTP client: request(), types, error class
   services/*.ts             per-domain wrappers and pure helpers (checkins, nutrition, exercises, workouts,
                             account, fitnessProfile)
@@ -213,16 +216,20 @@ frontend/src/
   features/navigation/      useUnsavedChangesGuard (shared by the Workout editor and Settings)
   features/theme/theme.ts   theme preference and resolution logic
   features/units/           pure unit conversion, parsing, ranges and formatting (no React)
+  features/auth/            user-scoped session storage cleanup, JWT userId claim (storage scoping only)
+  features/coach/           Coach message types, history building, storage, sources, client context,
+                            conversation reducer and error copy (pure; no React)
   components/ui/            shared primitives: Modal, ConfirmDialog, ChoiceGroup, SegmentedControl,
                             Avatar, Skeleton, icons
-  components/               layout (AppLayout, Header, Sidebar), auth, brand, nutrition, workout, settings
+  components/               layout (AppLayout, Header, Sidebar), auth, brand, nutrition, workout, settings,
+                            coach
   pages/                    one component per route
   index.css                 single global stylesheet, semantic colour tokens
 ```
 
 - **Routes:**
   - Public: `/login`, `/signup`.
-  - Behind `ProtectedRoute` + `AppLayout`: `/` (Dashboard), `/progress`, `/nutrition`, `/workout`, `/workout/new`, `/workout/:id/edit`, `/ai-coach` (stub), `/settings`.
+  - Behind `ProtectedRoute` + `AppLayout`: `/` (Dashboard), `/progress`, `/nutrition`, `/workout`, `/workout/new`, `/workout/:id/edit`, `/ai-coach`, `/settings`.
 - **State:** React state and context only, with no global state library. Pages load data inside `useEffect` with an `isCurrent` guard against stale responses.
 - **Layout:** desktop sidebar; at ≤767px the sidebar becomes an off-canvas drawer (`MOBILE_NAV_QUERY` in `AppLayout.tsx` must match the CSS media query). Other breakpoints: 1100, 900 and 640px.
 - **API errors:** `ApiRequestError` carries `status` and the backend's `errors[]` so forms can map field errors.
@@ -273,7 +280,19 @@ See [ADR-006](DECISIONS.md#adr-006-canonical-metric-storage-units-are-display-pr
 - Pages that render units (Progress, Dashboard, the Workout editor) wait for `isLoading` to finish, so no input starts in the wrong unit.
 - There is no cross-tab sync: other tabs pick up changes on their next load.
 - Applied to: body weight on Progress (current, history, add check-in, including the 500 kg / 1102.3 lb maximum), the Dashboard latest weight, and Settings target weight; height in Settings; the default unit for new workout exercises. Display uses at most one decimal (kg, lb, cm) or whole inches.
-- AI tools are unchanged and stay canonical (`weightKg`, `heightCm`); preferences are not sent to the model ([AI-SYSTEM.md](AI-SYSTEM.md)).
+- AI tools stay canonical (`weightKg`, `heightCm`) and add deterministic display values in the preferred units; the preferences are sent to the model as display metadata ([AI-SYSTEM.md](AI-SYSTEM.md)).
+
+### AI Coach
+
+See [ADR-026](DECISIONS.md#adr-026-ai-coach-conversation-context-is-client-held-bounded-and-untrusted) and [AI-SYSTEM.md](AI-SYSTEM.md).
+
+- `pages/AICoachPage.tsx` with components in `components/coach/` and pure logic in `features/coach/`.
+- **State:** `CoachConversationProvider` is mounted by `AppLayout`, so the conversation survives route changes and is discarded when sign-out unmounts the layout. It owns the single in-flight request: one request at a time, not abandoned by leaving the page, aborted on sign-out or New conversation. A generation counter and an owner check stop late responses from changing state or storage.
+- **Storage:** `sessionStorage["fitai.user.coach.conversation.v1"]` holds `{ version, userId, messages }` with completed messages only (newest 60). `userId` comes from the stored token's claim and must match on load; anything malformed, another user's or another version is discarded. Storage failures fall back to memory.
+- **Requests:** `clientContext` (local today and the browser's IANA timezone) is computed at send time; if no valid timezone is available the question is kept with a retryable error and no request is made (no fallback timezone). History is built from completed messages only (`buildCoachHistory`), newest turns within the backend limits; assistant turns are flattened as answer + action items + follow-up question and truncated with "…".
+- **Failures:** the question stays visible with Retry (same question, same history) and Edit; a 429 with a readable `Retry-After` shows a countdown.
+- **Rendering:** React text only (no HTML or Markdown). Sources show public categories and local dates, never tool names.
+- **Layout:** the page scrolls as a whole with a sticky composer; replies scroll to their start when the reader is at the bottom, otherwise "Jump to latest" appears.
 
 ### Theme system
 
@@ -301,7 +320,8 @@ Summary only; details in [AI-SYSTEM.md](AI-SYSTEM.md).
 - **Hardening:** at most 5 provider calls, 4 tool calls per turn and 8 per request, a 45-second deadline, a 25-second provider timeout with one retry, and a per-user rate limit. Logs carry metadata only.
 - `POST /api/ai/nutrition/estimate` is a tool-less structured estimate that never persists anything.
 - The model never touches the database, never chooses `userId`, and its output is Zod-validated before it is returned.
-- **Not implemented:** the frontend AI Coach page (it is a stub), persisted conversations and long-term memory, any AI write actions, streaming, and RAG.
+- **Frontend:** the Coach page described in section 6.
+- **Not implemented:** persisted conversations and long-term memory, any AI write actions, streaming, and RAG.
 
 ## 8. Database access
 

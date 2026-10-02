@@ -498,11 +498,13 @@ describe("POST /api/ai/coach", () => {
 
     const limited = await fetch(`${server.baseUrl}/api/ai/coach`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${who.token}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${who.token}`, "Content-Type": "application/json", Origin: "http://localhost:5173" },
       body: JSON.stringify({ message: "Hi", clientContext: liveContext() }),
     });
     assert.equal(limited.status, 429);
     assert.ok(Number(limited.headers.get("retry-after")) > 0);
+    // Exposed through CORS so a cross-origin frontend can read it (and only it).
+    assert.equal(limited.headers.get("access-control-expose-headers"), "Retry-After");
     assert.match((await limited.json()).message, /wait a moment/);
 
     assert.equal((await post(other, { message: "Hi", clientContext: liveContext() })).status, 200);

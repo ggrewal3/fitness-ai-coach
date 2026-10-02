@@ -19,7 +19,9 @@ dotenv.config();
 // start it on an ephemeral port. server.ts owns the real listener.
 const app = express();
 
-app.use(cors());
+// Retry-After (sent with 429) must be exposed for a cross-origin frontend
+// to read it; the AI Coach uses it for its retry countdown.
+app.use(cors({ exposedHeaders: ["Retry-After"] }));
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/account", accountRoutes);

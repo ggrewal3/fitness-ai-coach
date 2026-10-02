@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { CoachConversationProvider } from '../../context/CoachConversationContext'
 import { UnitPreferencesProvider } from '../../context/UnitPreferencesContext'
 import Header from './Header'
 import Sidebar from './Sidebar'
@@ -62,31 +63,34 @@ function AppLayout() {
   }, [isNavOpen])
 
   return (
-    // Unit preferences are only needed (and only loadable) when signed in.
+    // Unit preferences and the Coach conversation exist only while signed in;
+    // both are discarded when sign-out unmounts this layout.
     <UnitPreferencesProvider>
-      <div className="app-layout">
-        <Sidebar
-          isOpen={isNavOpen}
-          onClose={closeNav}
-          closeButtonRef={closeButtonRef}
-        />
-
-        {isNavOpen && (
-          <div className="nav-backdrop" aria-hidden="true" onClick={closeNav} />
-        )}
-
-        <div className="main-area" inert={isNavOpen}>
-          <Header
-            isNavOpen={isNavOpen}
-            onOpenNav={() => setIsNavOpen(true)}
-            menuButtonRef={menuButtonRef}
+      <CoachConversationProvider>
+        <div className="app-layout">
+          <Sidebar
+            isOpen={isNavOpen}
+            onClose={closeNav}
+            closeButtonRef={closeButtonRef}
           />
 
-          <main className="page-content">
-            <Outlet />
-          </main>
+          {isNavOpen && (
+            <div className="nav-backdrop" aria-hidden="true" onClick={closeNav} />
+          )}
+
+          <div className="main-area" inert={isNavOpen}>
+            <Header
+              isNavOpen={isNavOpen}
+              onOpenNav={() => setIsNavOpen(true)}
+              menuButtonRef={menuButtonRef}
+            />
+
+            <main className="page-content">
+              <Outlet />
+            </main>
+          </div>
         </div>
-      </div>
+      </CoachConversationProvider>
     </UnitPreferencesProvider>
   )
 }

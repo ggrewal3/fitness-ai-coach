@@ -226,4 +226,5 @@ Both endpoints are authenticated, read/compute only, and **never persist data**.
   - Coach only: the model still asks for tools on its last permitted turn → `502` ("AI Coach couldn't complete a response. Try asking a more specific question.").
   - Coach only: the 45-second request deadline passes → `504` ("AI Coach took too long to respond. Please try again.").
   - Coach only: rate limit → `429` with `Retry-After` (seconds) and a message.
-- The frontend uses the estimate endpoint (Nutrition modal) but not the coach endpoint yet.
+- The frontend uses the estimate endpoint (Nutrition modal) and the coach endpoint (`/ai-coach`).
+- `Retry-After` (seconds) is listed in `Access-Control-Expose-Headers`, so cross-origin browsers can read it.

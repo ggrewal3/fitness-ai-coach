@@ -121,7 +121,7 @@ Tests start the real app on an ephemeral port, create uniquely named users throu
 
 ### Frontend
 
-`npm test` (in `frontend/`) runs `node --test` on `tests/**/*.test.ts`. It needs no database and no extra dependency: Node strips TypeScript types, and `tests/support/resolve-ts.mjs` resolves the app's extensionless imports. Tests import only pure modules (no React, no `import.meta.env`), such as `features/units/` and the Settings and Workout drafts.
+`npm test` (in `frontend/`) runs `node --test` on `tests/**/*.test.ts`. It needs no database and no extra dependency: Node strips TypeScript types, and `tests/support/resolve-ts.mjs` resolves the app's extensionless imports. Tests import only pure modules (no React, no `import.meta.env`), such as `features/units/`, `features/coach/`, `features/auth/` and the Settings and Workout drafts.
 
 There are no component or browser tests. Verification is tests + build + lint, plus manual or ad-hoc browser checks. For UI work, check the documented breakpoints (1440, 1024, 768, 767, 640, 390, 320) and both themes.
 
