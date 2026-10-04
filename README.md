@@ -14,6 +14,7 @@ Instead of acting as a generic chatbot, the AI Coach can reason over structured 
 | [docs/DATABASE.md](docs/DATABASE.md) | Data model, ownership, units, migrations |
 | [docs/AI-SYSTEM.md](docs/AI-SYSTEM.md) | AI Coach, tools, data exposure, planned AI work |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Setup, commands, tests, pre-commit checklist |
+| [docs/evals/](docs/evals/) | Summaries of live AI evaluations (Phase 1D: coach-v3 baseline to accepted coach-v5) |
 | [AGENTS.md](AGENTS.md) | Instructions for coding agents working in this repository |
 
 ## Current Capabilities
@@ -28,6 +29,7 @@ Backend API:
 - Exercise catalogue with built-in FitAI exercises, private custom exercises, and deterministic search
 - AI Coach with structured responses and read-only tool calling across profile, weight, nutrition, activity, and workouts, grounded in the user's local date, rolling 7-day comparisons, deterministic metrics with data-sufficiency checks, and preferred display units; bounded tool output, call caps, a request deadline and a per-user rate limit
 - AI nutrition estimates that the user confirms before anything is saved
+- Opt-in live evaluation of the AI Coach (isolated test database, synthetic users, spending ceilings); the current coach-v5 prompt was accepted after a baseline-vs-candidate comparison ([docs/evals/AI-COACH-PHASE-1D.md](docs/evals/AI-COACH-PHASE-1D.md))
 - Runtime validation with Zod across API and AI boundaries
 
 Frontend:
@@ -90,7 +92,7 @@ fitness-ai-coach/
 ├── frontend/                 React + TypeScript application
 ├── backend/
 │   ├── prisma/               schema.prisma, migrations/, seed.ts
-│   ├── scripts/run-tests.mjs guarded test runner
+│   ├── scripts/              guarded test runner, opt-in AI Coach evaluation (coach-eval/)
 │   ├── test/                 backend test suites
 │   └── src/
 │       ├── middleware/
@@ -131,7 +133,6 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for environment variables, the mi
 
 ### Near-Term
 
-- AI Coach Phase 1D: evaluation and demo data. The grounded backend (1A), conversation context with sources (1B) and the Coach interface (1C) are done
 - Remaining user-facing fitness tracking workflows (activity)
 - Progress and photo workflows
 - Expand automated test coverage, including the frontend

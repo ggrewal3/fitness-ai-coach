@@ -8,8 +8,12 @@ export const COACH_LIMITS = {
    * still asks for tools, the request fails (502).
    */
   maxModelTurns: 5,
-  /** Tool calls honored in one model turn; extra calls get an error result. */
-  maxToolCallsPerTurn: 4,
+  /**
+   * Tool calls honored in one model turn; extra calls get an error result.
+   * Equal to the number of coach tools, so one turn can read every kind of
+   * data (ADR-019 amendment, 2026-10-04).
+   */
+  maxToolCallsPerTurn: 5,
   /** Tool calls honored in one request; extra calls get an error result. */
   maxToolCallsPerRequest: 8,
   /** Hard cap on one serialized tool result; larger results are replaced by an error. */

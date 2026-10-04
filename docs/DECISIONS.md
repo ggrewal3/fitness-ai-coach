@@ -1,6 +1,6 @@
 # FitAI Engineering Decisions
 
-Last reviewed: 2026-10-01
+Last reviewed: 2026-10-04
 
 Architecture decision records (ADRs) explaining **why** FitAI is built the way it is. The current system is described in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -41,6 +41,7 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
 | ADR-024 | Private profile-photo object storage | Accepted |
 | ADR-025 | The AI Coach is anchored to the client's local date and timezone | Accepted |
 | ADR-026 | AI Coach conversation context is client-held, bounded and untrusted | Accepted |
+| ADR-027 | Live AI Coach evaluation is opt-in, isolated and deterministic-first | Accepted |
 
 ---
 
@@ -341,6 +342,12 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - Malformed tool arguments now become an error result instead of failing the whole request: the adapter uses `responses.create` with plain JSON tool definitions and FitAI parses the arguments.
   - The provider has an explicit 25-second timeout and one retry, and the whole request has a 45-second deadline (504). The coach route has a per-user rate limit (429).
   - Logs gain a request ID, turn and tool-call counts, tool names, `days`, outcomes and failure categories; still no message text or tool output.
+- **Amendment (2026-10-04, AI Coach Phase 1D-B):** raises the per-turn tool-call cap from 4 to 5; the decision is unchanged.
+  - **Before:** the 1A amendment set 4 tool calls per model turn, 8 per request and 5 provider calls.
+  - **coach-v3 evidence** (live evaluation, ADR-027; `gpt-5.6-terra`, fixtures `1d-a.1`; baseline `20261003t145739z-482b49`, repeats `20261003t150501z-a3dbc0`): for the broad questions S11 and S14, the model asked for all five tools in one turn in 6 of 6 samples. The cap refused the fifth each time. Recovering cost an extra provider turn, and one S14 answer came back without workout data.
+  - **coach-v4 tried prompt-level splitting** ("at most 4 tool calls in one turn"; the refusal invited a retry next turn). In Stage 1 (`20261003t153357z-2939c4`), five-tool requests fell to 2 of 6. However, neither refusal was recovered (0 of 2), and required data was missing in 3 of 6 S11/S14 samples: workouts skipped after a refusal twice, and nutrition silently skipped once to stay within 4.
+  - **Decision:** there are exactly five coach tools, so up to 5 tool calls are honored per model turn. The limits of 8 tool calls per request and 5 provider calls are unchanged, as is everything else in the loop (extra calls still get an error result). The prompt drops the splitting instruction (coach-v5).
+  - **Purpose:** a question that needs every kind of data can be answered completely in one tool round. One extra call per turn barely relaxes the overall guard: each result stays at most 32,000 characters, and the 8-per-request and 5-provider-call caps still bound the whole request.
 
 ## ADR-020: Emails are normalized to lowercase and read-only after registration
 
@@ -483,3 +490,32 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - User scoping: the `userId` is the stored token's claim (read without verification, used only to scope storage); a conversation for another user, another version or malformed data is discarded. Signing out (logout or a 401) clears every `fitai.user.*` key, a generic rule rather than Coach-specific auth code.
   - History is built from completed messages only, within the limits above; a failed or in-flight question never enters it, and Retry resends the same question against the same history.
   - `clientContext` is computed at send time; without a valid IANA timezone the request is not sent (no fallback timezone).
+
+## ADR-027: Live AI Coach evaluation is opt-in, isolated and deterministic-first
+
+**Status:** Accepted (2026-10-03, AI Coach Phase 1D-A)
+
+- **Context:** The coach's grounding, follow-up and safety behavior depends on a real model. The deterministic tests (scripted providers) prove what the server enforces, but not what a model does with it. Measuring the model costs money, needs credentials, and creates data, so it must never happen by accident, and it must never touch development data.
+- **Decision:**
+  - A separate evaluation harness (`backend/scripts/coach-eval/`, `npm run eval:coach`) runs fixed scenarios against the real coach service (`generateCoachResponse`) and the configured model. It is **not** part of `npm test`, builds or any automated check.
+  - **Explicit opt-in:** a live run requires `COACH_EVAL_LIVE=1` (from the shell, never `.env`), the `--confirm-live` flag, `OPENAI_API_KEY` and `OPENAI_MODEL`. Any missing requirement stops the run before a provider request.
+  - **Test database only:** the database must be positively identified. `TEST_DATABASE_URL` must name a database ending in `_test`, differ from the development database by identity and by name, and the connected server must report that same database. Otherwise nothing runs.
+  - **Synthetic data:** each scenario gets its own user (`coach-eval-<runId>-<scenario>-<repeat>@fitai-eval.local`) seeded with fixed-date fixtures (today = 2026-06-15), deleted afterwards. Cleanup selects only that email prefix and domain, at the end of each scenario, at startup (stale users from interrupted runs), on SIGINT/SIGTERM, and is verified at the end.
+  - **Budgets:** one repeat by default, at most 5; hard ceilings of 150 provider calls (and HTTP attempts) and 1,000,000 tokens per run. Each request's worst case is reserved before it starts, so a run stops cleanly before crossing a ceiling.
+  - **Deterministic first:** each scenario's result comes from deterministic checks (tool calls, validated arguments, outcomes, sources, limits, fixture ground truth) and narrow, labelled heuristic checks on the answer text. Optional model judging (`--judge`, a 0–2 rubric) is reported separately, marked as model-judged, and never changes a result. Human review is the authority for safety failures and doubtful scores.
+  - **Minimal production instrumentation:** `generateCoachResponse` accepts an optional `observer` that receives copies of provider-turn, tool-call and completion events (including successful tool output). Production never supplies one; without it nothing changes, and observer data is never logged. OpenAI HTTP attempts and SDK retries are counted by a `fetch` wrapper inside the evaluation process only.
+  - Reports (JSON and Markdown) record the exact model, prompt version, fixture version and git commit, and are git-ignored. Comparisons between runs with different models are refused unless explicitly marked as a model-change experiment.
+- **Rationale:**
+  - Accidental live calls and development-data writes are the expensive failure modes, so every gate is mandatory and checked before anything connects.
+  - Fixed dates and fresh synthetic users make runs comparable across days and keep real users' data out of evaluations entirely.
+  - Code-level checks are reproducible and cheap to trust; text heuristics and model judges are not, so they can only flag answers for review.
+  - An observer passing copies is the smallest way to see what the model saw without logging tool data (ADR-019's logging rule) or capturing console output.
+- **Consequences:**
+  - Prompt or tool changes are evaluated against a recorded baseline with the same model, scenarios and fixtures. Prompt changes bump `COACH_PROMPT_VERSION`.
+  - Evaluation results are evidence, not tests: model output varies, so hardening needs a failure reproduced in at least 2 of 3 comparable runs, or a severe safety failure.
+  - Changing fixtures or scenario expectations requires bumping `FIXTURE_VERSION`, which makes older reports incomparable.
+  - The harness's own logic is covered by offline self-tests (`coach-eval-harness.test.ts`, `coach-observer.test.ts`) that block all non-local network access.
+- **Amendment (2026-10-04, AI Coach Phase 1D complete):** implementation status only; the decision is unchanged.
+  - The process was used end to end: a coach-v3 baseline, targeted repeats, coach-v4 and coach-v5 hardening, and a full baseline-vs-candidate comparison, all on `gpt-5.6-terra` with fixtures `1d-a.1` and the judge off. coach-v5 was accepted.
+  - Per-run reports remain git-ignored. A human-written summary with run IDs is committed at [docs/evals/AI-COACH-PHASE-1D.md](evals/AI-COACH-PHASE-1D.md).
+  - Known harness limitations, kept so that the `1d-a.1` runs stay comparable: the S2 and S17 text heuristics are narrow, and synthetic foods have 0 g carbs/fat.

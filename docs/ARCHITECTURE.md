@@ -1,6 +1,6 @@
 # FitAI Architecture
 
-Last reviewed: 2026-10-01
+Last reviewed: 2026-10-04
 
 This is the canonical description of how FitAI works **today**. It is not a changelog. Reasons behind important choices live in [DECISIONS.md](DECISIONS.md); HTTP contracts in [API.md](API.md); the data model in [DATABASE.md](DATABASE.md); AI specifics in [AI-SYSTEM.md](AI-SYSTEM.md); workflow in [DEVELOPMENT.md](DEVELOPMENT.md).
 
@@ -317,10 +317,11 @@ Summary only; details in [AI-SYSTEM.md](AI-SYSTEM.md).
 
 - `POST /api/ai/coach`: a message, the client's local date and timezone, and optional bounded client-held history (untrusted text turns, never stored; [ADR-026](DECISIONS.md#adr-026-ai-coach-conversation-context-is-client-held-bounded-and-untrusted)) in; a structured `{ answer, actionItems, followUpQuestion }` plus server-derived `sources` out. It is driven by a tool-calling loop over 5 **read-only** tools (profile, weight, nutrition, activity, workout history) that wrap domain services.
 - **Grounding:** tools work on the user's logical dates and rolling 7-day periods, return deterministic metrics (averages, sufficiency verdicts, protein per kg) plus display values in the user's preferred units, and bound every list they return.
-- **Hardening:** at most 5 provider calls, 4 tool calls per turn and 8 per request, a 45-second deadline, a 25-second provider timeout with one retry, and a per-user rate limit. Logs carry metadata only.
+- **Hardening:** at most 5 provider calls, 5 tool calls per turn (one per tool) and 8 per request, a 45-second deadline, a 25-second provider timeout with one retry, and a per-user rate limit. Logs carry metadata only.
 - `POST /api/ai/nutrition/estimate` is a tool-less structured estimate that never persists anything.
 - The model never touches the database, never chooses `userId`, and its output is Zod-validated before it is returned.
 - **Frontend:** the Coach page described in section 6.
+- **Evaluation:** an opt-in live-model evaluation harness with an optional in-process observer on the coach service (no effect when absent); see [AI-SYSTEM.md](AI-SYSTEM.md#evaluation-phase-1d). Phase 1D evaluated the coach-v3 baseline, hardened it (coach-v4, then coach-v5 with a per-turn cap of 5) and accepted coach-v5 after a full live comparison; see [docs/evals/AI-COACH-PHASE-1D.md](evals/AI-COACH-PHASE-1D.md).
 - **Not implemented:** persisted conversations and long-term memory, any AI write actions, streaming, and RAG.
 
 ## 8. Database access
@@ -337,6 +338,7 @@ See [DATABASE.md](DATABASE.md).
 - **Backend:**
   - Node's built-in test runner with `tsx` (`backend/test/*.test.ts`: auth, account, avatar, profile, exercises, workouts, route smoke checks, and the AI Coach's dates, client context, display units, rate limiter, grounding tools and loop) runs against the real Express app and a **separate PostgreSQL database**.
   - The coach loop is tested with a scripted fake `ModelProvider` (`setModelProvider()`), and the OpenAI adapter against a local fake Responses API, so no OpenAI key is needed.
+  - **Live AI evaluation is separate** ([ADR-027](DECISIONS.md#adr-027-live-ai-coach-evaluation-is-opt-in-isolated-and-deterministic-first)): `npm run eval:coach` (`backend/scripts/coach-eval/`) runs fixed scenarios against the real model and the test database only, with synthetic users, explicit opt-in and spending ceilings. It is never part of `npm test`; its own logic is tested offline by `coach-eval-harness.test.ts`.
   - `scripts/run-tests.mjs` requires `TEST_DATABASE_URL`, refuses to run against the development database, applies migrations, seeds the catalogue, and runs the files serially.
   - Tests create uniquely named users through the real API and delete them afterwards; cascades clean up their data.
 - **Frontend:** `npm test` runs dependency-free `node --test` suites in `frontend/tests/` against pure modules (unit conversion, the Fitness draft's no-drift rules, workout load-unit defaults). Node strips TypeScript types; a small resolve hook (`tests/support/resolve-ts.mjs`) handles extensionless imports. There are no component or browser tests: verification is also `npm run build` (`tsc -b` + Vite) and `npm run lint`, and UI changes are checked with ad-hoc headless-browser runs that are not part of the repository.

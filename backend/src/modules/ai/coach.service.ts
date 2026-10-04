@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getUnitPreferences } from "../account/account.service.js";
 import { COACH_LIMITS, type CoachLimits } from "./coach.limits.js";
+import { notifyObserver, type CoachObserver, type CoachToolOutcome } from "./coach.observer.js";
 import { buildCoachSystemPrompt, COACH_PROMPT_VERSION } from "./coach.prompts.js";
 import { coachResponseSchema } from "./coach.schemas.js";
 import { deriveSources, type CoachSource, type SuccessfulToolUse } from "./coach.sources.js";
@@ -48,13 +49,20 @@ export interface CoachRunResult {
   sources: CoachSource[];
 }
 
-type ToolOutcome = "ok" | "cached" | "unknown_tool" | "invalid_arguments" | "error" | "too_large" | "turn_cap" | "request_cap";
+type ToolOutcome = CoachToolOutcome;
+
+export interface CoachRunOptions {
+  /** Test overrides. */
+  limits?: Partial<CoachLimits>;
+  /** Evaluation-only observation (coach.observer.ts); production never sets it. */
+  observer?: CoachObserver;
+}
 
 const TOOL_ERRORS = {
   unavailable: "Tool unavailable.",
   invalidArguments: "Invalid tool arguments.",
   tooLarge: "Tool result too large. Request a shorter period.",
-  turnCap: "Too many tool calls in one turn. Use the results already returned.",
+  turnCap: "Too many tool calls in one turn. Request this call again in your next turn if you still need it.",
   requestCap: "Tool call limit reached for this request. Answer with the data already retrieved.",
 } as const;
 
@@ -104,14 +112,16 @@ function failureCategory(error: unknown): string {
  * - the whole request is bounded by `requestDeadlineMs` (CoachDeadlineError).
  *
  * Logs metadata only: never the message, tool output or answer.
- * `limits` overrides exist for tests.
+ * `limits` overrides exist for tests; `observer` exists for the opt-in
+ * evaluation harness and receives copies only (coach.observer.ts).
  */
 export async function generateCoachResponse(
   userId: number,
   request: CoachRequest,
-  options: { limits?: Partial<CoachLimits> } = {}
+  options: CoachRunOptions = {}
 ): Promise<CoachRunResult> {
   const limits: CoachLimits = { ...COACH_LIMITS, ...options.limits };
+  const observer = options.observer;
   const requestId = randomUUID();
   const startedAt = Date.now();
   const deadline = new AbortController();
@@ -165,43 +175,57 @@ export async function generateCoachResponse(
     });
 
     const callModel = async (call: () => Promise<ModelTurn>): Promise<ModelTurn> => {
+      const callStartedAt = Date.now();
       const turn = await withinDeadline(call);
       modelTurns += 1;
       model = turn.model;
       usage = addUsage(usage, turn.usage);
+      notifyObserver(observer, {
+        type: "provider_turn",
+        requestId,
+        turn: modelTurns,
+        kind: turn.type,
+        requestedToolCalls: turn.type === "tool_calls" ? turn.toolCalls.length : 0,
+        model: turn.model,
+        usage: turn.usage ?? null,
+        latencyMs: Date.now() - callStartedAt,
+      });
       return turn;
     };
 
-    const runTool = async (call: ModelToolCall, callsThisTurn: number): Promise<{ output: unknown; outcome: ToolOutcome }> => {
-      if (callsThisTurn >= limits.maxToolCallsPerTurn) return { output: { error: TOOL_ERRORS.turnCap }, outcome: "turn_cap" };
-      if (toolCallCount >= limits.maxToolCallsPerRequest) return { output: { error: TOOL_ERRORS.requestCap }, outcome: "request_cap" };
+    type ToolRun = { output: unknown; outcome: ToolOutcome; validatedArguments: Record<string, unknown> | null };
+
+    const runTool = async (call: ModelToolCall, callsThisTurn: number): Promise<ToolRun> => {
+      if (callsThisTurn >= limits.maxToolCallsPerTurn) return { output: { error: TOOL_ERRORS.turnCap }, outcome: "turn_cap", validatedArguments: null };
+      if (toolCallCount >= limits.maxToolCallsPerRequest) return { output: { error: TOOL_ERRORS.requestCap }, outcome: "request_cap", validatedArguments: null };
       toolCallCount += 1;
 
       const tool = getRegisteredTool(call.name);
-      if (!tool) return { output: { error: TOOL_ERRORS.unavailable }, outcome: "unknown_tool" };
+      if (!tool) return { output: { error: TOOL_ERRORS.unavailable }, outcome: "unknown_tool", validatedArguments: null };
 
       const parsed = call.malformed ? null : tool.inputSchema.safeParse(call.arguments);
-      if (!parsed?.success) return { output: { error: TOOL_ERRORS.invalidArguments }, outcome: "invalid_arguments" };
+      if (!parsed?.success) return { output: { error: TOOL_ERRORS.invalidArguments }, outcome: "invalid_arguments", validatedArguments: null };
+      const validatedArguments = parsed.data as Record<string, unknown>;
 
       const cacheKey = `${tool.name}:${JSON.stringify(parsed.data)}`;
-      if (cache.has(cacheKey)) return { output: cache.get(cacheKey), outcome: "cached" };
+      if (cache.has(cacheKey)) return { output: cache.get(cacheKey), outcome: "cached", validatedArguments };
 
       let output: unknown;
       try {
         output = await withinDeadline(() => tool.execute(parsed.data, context));
       } catch (error) {
         if (error instanceof CoachDeadlineError) throw error;
-        return { output: { error: TOOL_ERRORS.unavailable }, outcome: "error" };
+        return { output: { error: TOOL_ERRORS.unavailable }, outcome: "error", validatedArguments };
       }
 
       if (JSON.stringify(output).length > limits.maxToolResultChars) {
-        return { output: { error: TOOL_ERRORS.tooLarge }, outcome: "too_large" };
+        return { output: { error: TOOL_ERRORS.tooLarge }, outcome: "too_large", validatedArguments };
       }
 
       cache.set(cacheKey, output);
-      const days = (parsed.data as { days?: unknown }).days;
+      const days = validatedArguments.days;
       toolsUsed.push({ name: tool.name, days: typeof days === "number" ? days : null });
-      return { output, outcome: "ok" };
+      return { output, outcome: "ok", validatedArguments };
     };
 
     let turn = await callModel(() => session.next({ signal: deadline.signal }));
@@ -216,10 +240,11 @@ export async function generateCoachResponse(
 
       for (const call of turn.toolCalls) {
         const toolStartedAt = Date.now();
-        const { output, outcome } = await runTool(call, callsThisTurn);
+        const { output, outcome, validatedArguments } = await runTool(call, callsThisTurn);
         if (outcome !== "turn_cap" && outcome !== "request_cap") callsThisTurn += 1;
         const registered = getRegisteredTool(call.name);
         const days = (call.arguments as { days?: unknown } | undefined)?.days;
+        const toolLatencyMs = Date.now() - toolStartedAt;
 
         console.info({
           event: "ai.tool.completed",
@@ -229,7 +254,18 @@ export async function generateCoachResponse(
           days: typeof days === "number" ? days : null,
           outcome,
           success: outcome === "ok" || outcome === "cached",
-          latencyMs: Date.now() - toolStartedAt,
+          latencyMs: toolLatencyMs,
+        });
+
+        notifyObserver(observer, {
+          type: "tool_call",
+          requestId,
+          turn: modelTurns,
+          toolName: registered ? registered.name : "unknown",
+          validatedArguments,
+          outcome,
+          ...(outcome === "ok" || outcome === "cached" ? { output } : {}),
+          latencyMs: toolLatencyMs,
         });
 
         results.push({ callId: call.id, output });
@@ -265,6 +301,19 @@ export async function generateCoachResponse(
       success: true,
     });
 
+    notifyObserver(observer, {
+      type: "request_completed",
+      requestId,
+      model,
+      promptVersion: COACH_PROMPT_VERSION,
+      latencyMs: Date.now() - startedAt,
+      modelTurns,
+      toolCallCount,
+      usage: usage ?? null,
+      success: true,
+      failureCategory: null,
+    });
+
     return { response: parsedResponse.data, toolsUsed, sources };
   } catch (error) {
     console.error({
@@ -283,6 +332,19 @@ export async function generateCoachResponse(
       failureCategory: failureCategory(error),
       turnLimitReached: error instanceof CoachTurnLimitError,
       deadlineReached: error instanceof CoachDeadlineError,
+    });
+
+    notifyObserver(observer, {
+      type: "request_completed",
+      requestId,
+      model,
+      promptVersion: COACH_PROMPT_VERSION,
+      latencyMs: Date.now() - startedAt,
+      modelTurns,
+      toolCallCount,
+      usage: usage ?? null,
+      success: false,
+      failureCategory: failureCategory(error),
     });
 
     throw error;

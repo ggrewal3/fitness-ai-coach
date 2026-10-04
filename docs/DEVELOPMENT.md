@@ -1,6 +1,6 @@
 # FitAI Development Guide
 
-Last reviewed: 2026-10-01
+Last reviewed: 2026-10-04
 
 How to run, change and verify FitAI locally. Architecture is in [ARCHITECTURE.md](ARCHITECTURE.md); the data workflow in [DATABASE.md](DATABASE.md#migrations).
 
@@ -17,7 +17,8 @@ How to run, change and verify FitAI locally. Architecture is in [ARCHITECTURE.md
 backend/            Express API (own package.json)
   prisma/           schema.prisma, migrations/, seed.ts
   prisma.config.ts  Prisma config (schema path, migrations, seed command, datasource URL)
-  scripts/          run-tests.mjs (guarded test runner), sweep-orphan-avatars.ts (storage maintenance)
+  scripts/          run-tests.mjs (guarded test runner), sweep-orphan-avatars.ts (storage maintenance),
+                    coach-eval/ (opt-in live AI Coach evaluation; results/ is git-ignored)
   src/              app.ts, server.ts, lib/ (prisma, storage, images), middleware/, modules/<domain>/, types/
   src/generated/    generated Prisma client (git-ignored)
   storage/          private local object storage (profile photos); git-ignored, created on demand
@@ -41,6 +42,8 @@ Never commit `.env` files (they are git-ignored) and never paste real values int
 | backend | `PORT` | API port, default `5001` |
 | frontend | `VITE_API_BASE_URL` | API origin used by the browser (e.g. the backend on port 5001). Any `VITE_*` value is **public**: it is compiled into the bundle |
 | test only | `TEST_DATABASE_URL` | Connection string for the separate test database. Supply it in the shell only, **never in `.env` or committed files** |
+| evaluation only | `COACH_EVAL_LIVE` | Must be `1`, set in the shell (never `.env`), for a live AI Coach evaluation run |
+| evaluation only | `COACH_EVAL_JUDGE_MODEL` | Optional model for `--judge`; defaults to `OPENAI_MODEL` |
 
 The local Docker database exposes PostgreSQL on host port **5433**. Its credentials are the local-only values in `docker-compose.yml`; don't reuse them anywhere real.
 
@@ -117,7 +120,26 @@ Tests start the real app on an ephemeral port, create uniquely named users throu
 - cross-user access returning 404, or never leaking;
 - the happy path.
 
-**AI Coach tests need no OpenAI key.** `coach-loop.test.ts` replaces the provider with a scripted fake through `setModelProvider()` (reset it in `afterEach`) to test loop limits, error mapping, the rate limit and log privacy. The grounding tools (`ai-grounding.test.ts`) run against the test database with a fixed `today`, so their periods do not depend on the real date. `display-units.test.ts` loads the frontend's `unitFormat.ts` at runtime to check the backend display strings match it. `openai-adapter.test.ts` points the real OpenAI adapter at a local fake Responses API (`OPENAI_BASE_URL`, a dummy key) to check request shape, tool-call pairing, parsing, refusals, retries and the nutrition estimate.
+**AI Coach tests need no OpenAI key.** `coach-observer.test.ts` checks the evaluation observer's boundaries, and `coach-eval-harness.test.ts` tests the evaluation harness offline (it blocks every non-local network request). `coach-loop.test.ts` replaces the provider with a scripted fake through `setModelProvider()` (reset it in `afterEach`) to test loop limits, error mapping, the rate limit and log privacy. The grounding tools (`ai-grounding.test.ts`) run against the test database with a fixed `today`, so their periods do not depend on the real date. `display-units.test.ts` loads the frontend's `unitFormat.ts` at runtime to check the backend display strings match it. `openai-adapter.test.ts` points the real OpenAI adapter at a local fake Responses API (`OPENAI_BASE_URL`, a dummy key) to check request shape, tool-call pairing, parsing, refusals, retries and the nutrition estimate.
+
+### Live AI Coach evaluation (opt-in)
+
+`npm run eval:coach` measures the real coach with the configured OpenAI model ([ADR-027](DECISIONS.md#adr-027-live-ai-coach-evaluation-is-opt-in-isolated-and-deterministic-first), [AI-SYSTEM.md](AI-SYSTEM.md#evaluation-phase-1d)). It costs money and is **never** part of `npm test`, builds or any automated check. Run it from `backend/`:
+
+```bash
+TEST_DATABASE_URL="…/fitness_ai_test" npm run eval:coach -- --dry-run --scenarios=S1,S15     # plan only
+COACH_EVAL_LIVE=1 TEST_DATABASE_URL="…/fitness_ai_test" npm run eval:coach -- --scenarios=S1,S15 --confirm-live
+COACH_EVAL_LIVE=1 TEST_DATABASE_URL="…/fitness_ai_test" npm run eval:coach -- --confirm-live     # all of S1–S19
+npm run eval:coach:compare -- scripts/coach-eval/results/<baseline>.json scripts/coach-eval/results/<candidate>.json
+```
+
+- **Required for a live run:** `COACH_EVAL_LIVE=1` in the shell, `--confirm-live`, `OPENAI_API_KEY` and `OPENAI_MODEL` (shell or `backend/.env`), and `TEST_DATABASE_URL` naming a database that ends in `_test` and is not the development database. Anything missing stops the run before any provider request. It applies migrations and the seed to the test database first, like `npm test`.
+- **Options:** `--scenarios=S1,S15` (a subset; start with a small smoke run), `--repeat=N` (default 1, max 5), `--judge` (model-judged quality scores, off by default), `--max-provider-calls=N` / `--max-tokens=N` (can only lower the 150-call / 1,000,000-token ceilings), `--dry-run` (print the plan and the maximum possible provider calls; connects to nothing).
+- **Data:** each scenario creates a synthetic `coach-eval-…@fitai-eval.local` user on the test database and deletes it afterwards. Users left by an interrupted run are removed at the next start; Ctrl+C also cleans up. The development database is never touched.
+- **Reports:** `scripts/coach-eval/results/<runId>.json` and `.md` (git-ignored). Read the Markdown report: **FAIL** is a required deterministic check, **REVIEW** a heuristic text check worth a human look, **ERROR** a harness or fixture problem. Model-judged scores are advisory; a human decides on safety failures.
+- **Comparisons** require the same model, fixtures, scenarios and repeat count; `--allow-model-change` marks an intentional model-change experiment.
+- **Recording results:** per-run reports stay git-ignored. When an evaluation leads to an accepted change, commit a short human-written summary under `docs/evals/` with the run IDs (for example [AI-COACH-PHASE-1D.md](evals/AI-COACH-PHASE-1D.md)). The current baseline for future comparisons is the coach-v5 run `20261004t174313z-c47f3f` (`gpt-5.6-terra`, fixtures `1d-a.1`), but its report exists only on the machine that ran it, so a new baseline may need to be recorded first.
+- **Changing scenarios or fixtures** (`scenarios.ts`, `fixtures.ts`) means bumping `FIXTURE_VERSION` and keeping every scenario passing on its known-good scripted transcript in `test/coach-eval-harness.test.ts`.
 
 ### Frontend
 

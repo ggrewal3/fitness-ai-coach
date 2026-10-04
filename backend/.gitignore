@@ -8,3 +8,6 @@ node_modules
 
 # Private local object storage (profile photos). Never commit user uploads.
 /storage/
+
+# Live AI Coach evaluation reports (synthetic data; summaries go to docs/evals/ when approved).
+/scripts/coach-eval/results/

@@ -11,7 +11,9 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "db:seed": "prisma db seed",
     "test": "node scripts/run-tests.mjs",
-    "storage:sweep-avatars": "tsx scripts/sweep-orphan-avatars.ts"
+    "storage:sweep-avatars": "tsx scripts/sweep-orphan-avatars.ts",
+    "eval:coach": "tsx scripts/coach-eval/main.ts",
+    "eval:coach:compare": "tsx scripts/coach-eval/compare.ts"
   },
   "keywords": [
     "fitness",
