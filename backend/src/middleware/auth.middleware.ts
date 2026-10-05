@@ -1,5 +1,5 @@
 import { Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import { verifySessionToken } from "../modules/auth/session.js";
 import { AuthenticatedRequest } from "../types/auth.types.js";
 
 export function authMiddleware(
@@ -24,12 +24,8 @@ export function authMiddleware(
   }
 
   try {
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET!
-    ) as { userId: number };
-
-    req.userId = decoded.userId;
+    // HS256 only (session.ts): tokens signed any other way are rejected.
+    req.userId = verifySessionToken(token).userId;
 
     next();
   } catch {

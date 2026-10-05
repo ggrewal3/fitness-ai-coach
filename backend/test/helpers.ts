@@ -4,6 +4,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import app from "../src/app.js";
 import prisma from "../src/lib/prisma.js";
+import { resetAuthRateLimits } from "../src/modules/auth/auth.rateLimits.js";
 
 export { prisma };
 
@@ -41,8 +42,18 @@ export type Api = <T = any>(
   options?: { token?: string; body?: unknown }
 ) => Promise<ApiResult<T>>;
 
-export function createApi(baseUrl: string): Api {
+/**
+ * Every test request comes from the same loopback IP, so by default the
+ * per-IP auth rate limits are reset before each /api/auth request; otherwise
+ * suites that create many users would hit them. Rate-limit tests pass
+ * `{ enforceAuthRateLimits: true }` to see the real limits.
+ */
+export function createApi(baseUrl: string, settings: { enforceAuthRateLimits?: boolean } = {}): Api {
   return async (method, path, options = {}) => {
+    if (!settings.enforceAuthRateLimits && path.startsWith("/api/auth/")) {
+      resetAuthRateLimits();
+    }
+
     const headers: Record<string, string> = {};
 
     if (options.body !== undefined) {

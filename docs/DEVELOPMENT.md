@@ -39,7 +39,12 @@ Never commit `.env` files (they are git-ignored) and never paste real values int
 | backend | `JWT_SECRET` | Secret used to sign and verify JWTs |
 | backend | `OPENAI_API_KEY` | OpenAI key for the AI endpoints. Optional: AI routes return 503 without it |
 | backend | `OPENAI_MODEL` | Model name for the AI endpoints. Optional, as above |
+| backend | `APPLE_CLIENT_ID` | Sign in with Apple **Services ID** (e.g. `com.example.fitai.web`), checked as the Apple ID token audience. Public, not a secret. Optional: without it, Apple sign-in returns 503 and other sign-in methods work normally. No Apple private key, key ID, team ID or client secret is needed (the backend only verifies the ID token) |
+| backend | `GOOGLE_CLIENT_ID` | Google OAuth **web client ID** (public, not a secret), checked as the ID token audience. Optional: without it, Google sign-in returns 503 and password auth works normally. No Google client secret is needed |
 | backend | `PORT` | API port, default `5001` |
+| frontend | `VITE_GOOGLE_CLIENT_ID` | Google OAuth **web client ID** for the sign-in button: the same client as the backend's `GOOGLE_CLIENT_ID`. Public, like every `VITE_*` value. Optional: unset hides the Google button. For local development, add `http://localhost:5173` (and any other dev origin) to the client's **Authorized JavaScript origins** in Google Cloud. No redirect URI or client secret is needed |
+| frontend | `VITE_APPLE_CLIENT_ID` | Sign in with Apple **Services ID** for the Apple button: the same value as the backend's `APPLE_CLIENT_ID`. Public. Apple sign-in is shown only when this **and** `VITE_APPLE_REDIRECT_URI` are set and valid |
+| frontend | `VITE_APPLE_REDIRECT_URI` | The return URL registered on that Services ID. Public. Must be an absolute **`https://`** URL, otherwise the Apple button is hidden. Apple JS uses it in popup mode, but nothing is served there. Apple does not accept `localhost` or plain-HTTP domains, so a real Apple sign-in needs an HTTPS domain (a tunnel or staging) registered under the Services ID's **Domains and Subdomains** and **Return URLs**. No private key, key ID, team ID or client secret is used |
 | frontend | `VITE_API_BASE_URL` | API origin used by the browser (e.g. the backend on port 5001). Any `VITE_*` value is **public**: it is compiled into the bundle |
 | test only | `TEST_DATABASE_URL` | Connection string for the separate test database. Supply it in the shell only, **never in `.env` or committed files** |
 | evaluation only | `COACH_EVAL_LIVE` | Must be `1`, set in the shell (never `.env`), for a live AI Coach evaluation run |
@@ -120,6 +125,10 @@ Tests start the real app on an ephemeral port, create uniquely named users throu
 - cross-user access returning 404, or never leaking;
 - the happy path.
 
+**Social sign-in tests never contact Google or Apple.** `auth-apple.test.ts` works like the Google suite, with `setAppleKeyResolver` and an outbound-request guard. In the frontend, `tests/googleSignIn.test.ts` and `tests/appleSignIn.test.ts` stub `fetch` and the script host, so neither provider script is ever loaded.
+
+**Google sign-in tests never contact Google.** `auth-google.test.ts` signs ID tokens with locally generated RSA keys, points the verifier at them (`setGoogleKeyResolver`) and blocks every non-local `fetch`. Every test request comes from the same loopback IP, so `createApi` in `test/helpers.ts` resets the per-IP auth rate limits before each `/api/auth/*` request; rate-limit tests pass `{ enforceAuthRateLimits: true }`.
+
 **AI Coach tests need no OpenAI key.** `coach-observer.test.ts` checks the evaluation observer's boundaries, and `coach-eval-harness.test.ts` tests the evaluation harness offline (it blocks every non-local network request). `coach-loop.test.ts` replaces the provider with a scripted fake through `setModelProvider()` (reset it in `afterEach`) to test loop limits, error mapping, the rate limit and log privacy. The grounding tools (`ai-grounding.test.ts`) run against the test database with a fixed `today`, so their periods do not depend on the real date. `display-units.test.ts` loads the frontend's `unitFormat.ts` at runtime to check the backend display strings match it. `openai-adapter.test.ts` points the real OpenAI adapter at a local fake Responses API (`OPENAI_BASE_URL`, a dummy key) to check request shape, tool-call pairing, parsing, refusals, retries and the nutrition estimate.
 
 ### Live AI Coach evaluation (opt-in)
@@ -143,7 +152,7 @@ npm run eval:coach:compare -- scripts/coach-eval/results/<baseline>.json scripts
 
 ### Frontend
 
-`npm test` (in `frontend/`) runs `node --test` on `tests/**/*.test.ts`. It needs no database and no extra dependency: Node strips TypeScript types, and `tests/support/resolve-ts.mjs` resolves the app's extensionless imports. Tests import only pure modules (no React, no `import.meta.env`), such as `features/units/`, `features/coach/`, `features/auth/` and the Settings and Workout drafts.
+`npm test` (in `frontend/`) runs `node --test` on `tests/**/*.test.ts`. It needs no database and no extra dependency: Node strips TypeScript types, and `tests/support/resolve-ts.mjs` resolves the app's extensionless imports. Tests import only pure modules (no React), such as `features/units/`, `features/coach/`, `features/auth/` and the Settings and Workout drafts. The same hook maps `import.meta.env` in app sources to `globalThis.__VITE_ENV__`, so a test can set Vite configuration before importing a module such as `services/api.ts`. Google sign-in tests stub `fetch` and a fake GIS script host; nothing contacts Google.
 
 There are no component or browser tests. Verification is tests + build + lint, plus manual or ad-hoc browser checks. For UI work, check the documented breakpoints (1440, 1024, 768, 767, 640, 390, 320) and both themes.
 

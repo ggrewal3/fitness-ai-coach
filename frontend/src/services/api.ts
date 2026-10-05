@@ -10,6 +10,7 @@ export const AUTH_TOKEN_STORAGE_KEY = "fitai.auth.token"
 type ApiErrorBody = {
   message?: unknown
   errors?: unknown
+  code?: unknown
 }
 
 export type ApiValidationError = {
@@ -22,18 +23,22 @@ export class ApiRequestError extends Error {
   readonly errors: ApiValidationError[]
   /** Seconds from the response's Retry-After header (e.g. on 429), if any. */
   readonly retryAfterSeconds: number | null
+  /** Machine-readable error code from the body (e.g. "EMAIL_IN_USE"), if any. */
+  readonly code: string | null
 
   constructor(
     message: string,
     status: number,
     errors: ApiValidationError[] = [],
     retryAfterSeconds: number | null = null,
+    code: string | null = null,
   ) {
     super(message)
     this.name = "ApiRequestError"
     this.status = status
     this.errors = errors
     this.retryAfterSeconds = retryAfterSeconds
+    this.code = code
   }
 }
 
@@ -116,7 +121,17 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+type RequestOptions = RequestInit & {
+  /**
+   * Whether a 401 means the FitAI session ended (clear the token and sign
+   * out). True for every authenticated call. Sign-in endpoints pass false: a
+   * 401 there means the credentials or the Google account couldn't be
+   * verified, not that an existing session expired.
+   */
+  endsSessionOn401?: boolean
+}
+
+async function request<T>(path: string, { endsSessionOn401 = true, ...options }: RequestOptions = {}): Promise<T> {
   if (!API_BASE_URL) {
     throw new ApiRequestError("API base URL is not configured.", 0)
   }
@@ -138,7 +153,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   })
   const body = await parseResponseBody(response)
 
-  if (response.status === 401) {
+  if (response.status === 401 && endsSessionOn401) {
     clearStoredAuthToken()
     unauthorizedHandler?.()
   }
@@ -155,6 +170,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       response.status,
       getValidationErrors(errorBody.errors),
       parseRetryAfter(response.headers.get("Retry-After")),
+      typeof errorBody.code === "string" ? errorBody.code : null,
     )
   }
 
@@ -202,6 +218,7 @@ export async function loginUser(
   return request<LoginResponse>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify(credentials),
+    endsSessionOn401: false,
   })
 }
 
@@ -211,6 +228,64 @@ export async function registerUser(
   return request<SignupResponse>("/api/auth/register", {
     method: "POST",
     body: JSON.stringify(credentials),
+    endsSessionOn401: false,
+  })
+}
+
+/** Providers FitAI can sign in with. */
+export type SocialProvider = "GOOGLE" | "APPLE"
+
+export type SignInNonceResponse = {
+  provider: SocialProvider
+  nonce: string
+  expiresAt: string
+}
+
+export type SocialSignInResponse = {
+  token: string
+  user: AuthUser
+  isNewUser: boolean
+}
+
+/** A fresh single-use nonce for one provider sign-in (ADR-028). Never stored. */
+export async function requestSignInNonce(provider: SocialProvider): Promise<SignInNonceResponse> {
+  return request<SignInNonceResponse>("/api/auth/nonce", {
+    method: "POST",
+    body: JSON.stringify({ provider }),
+    endsSessionOn401: false,
+  })
+}
+
+/**
+ * Exchanges Google's ID token (and the nonce it was issued for) for a FitAI
+ * session. The credential and nonce are only sent in this request body.
+ */
+export async function signInWithGoogleCredential(credential: string, nonce: string): Promise<SocialSignInResponse> {
+  return request<SocialSignInResponse>("/api/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ credential, nonce }),
+    endsSessionOn401: false,
+  })
+}
+
+export type AppleSignInRequest = {
+  idToken: string
+  nonce: string
+  /** Apple's first-authorization name: unsigned, only names a new account. */
+  firstName?: string
+  lastName?: string
+}
+
+/**
+ * Exchanges Apple's ID token (and the nonce it was issued for) for a FitAI
+ * session. Never sends Apple's authorization code, email, subject or relay
+ * flag: the backend reads those from the signed token.
+ */
+export async function signInWithAppleIdToken({ idToken, nonce, firstName, lastName }: AppleSignInRequest): Promise<SocialSignInResponse> {
+  return request<SocialSignInResponse>("/api/auth/apple", {
+    method: "POST",
+    body: JSON.stringify({ idToken, nonce, firstName, lastName }),
+    endsSessionOn401: false,
   })
 }
 

@@ -11,6 +11,9 @@ import {
   loginUser,
   registerUser,
   setUnauthorizedHandler,
+  signInWithAppleIdToken,
+  signInWithGoogleCredential,
+  type AppleSignInRequest,
   storeAuthToken,
   type LoginCredentials,
   type SignupCredentials,
@@ -41,12 +44,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [])
 
+  // Every sign-in method ends here: only FitAI's own session token is stored
+  // (never a provider credential), under the same key as always.
+  const acceptSession = useCallback((sessionToken: string) => {
+    storeAuthToken(sessionToken)
+    setToken(sessionToken)
+  }, [])
+
   const login = useCallback(async (credentials: LoginCredentials) => {
     const response = await loginUser(credentials)
 
-    storeAuthToken(response.token)
-    setToken(response.token)
-  }, [])
+    acceptSession(response.token)
+  }, [acceptSession])
+
+  const loginWithGoogle = useCallback(async (credential: string, nonce: string) => {
+    const response = await signInWithGoogleCredential(credential, nonce)
+
+    acceptSession(response.token)
+    return { isNewUser: response.isNewUser }
+  }, [acceptSession])
+
+  const loginWithApple = useCallback(async (appleRequest: AppleSignInRequest) => {
+    const response = await signInWithAppleIdToken(appleRequest)
+
+    acceptSession(response.token)
+    return { isNewUser: response.isNewUser }
+  }, [acceptSession])
 
   const signup = useCallback(
     async (credentials: SignupCredentials) => registerUser(credentials),
@@ -63,10 +86,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       token,
       isAuthenticated: Boolean(token),
       login,
+      loginWithApple,
+      loginWithGoogle,
       signup,
       logout,
     }),
-    [login, logout, signup, token],
+    [login, loginWithApple, loginWithGoogle, logout, signup, token],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

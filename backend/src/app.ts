@@ -47,4 +47,14 @@ app.get("/api/protected-test", authMiddleware, (_req, res) => {
   });
 });
 
+// A request body that isn't valid JSON gets a plain 400. Without this,
+// Express's default error handler logs the parser error, whose message quotes
+// a fragment of the body (it could be part of a password or sign-in credential).
+app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if ((error as { type?: unknown } | null)?.type === "entity.parse.failed") {
+    return res.status(400).json({ message: "Request body must be valid JSON." });
+  }
+  next(error);
+});
+
 export default app;

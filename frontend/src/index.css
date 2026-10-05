@@ -4556,3 +4556,89 @@ html:has(.settings-save-footer) {
     transition: none;
   }
 }
+
+/* Social sign-in (Google's own button, then an "or" divider before the password form) */
+.social-signin {
+  display: grid;
+  gap: 8px;
+}
+
+.social-signin-button {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+}
+
+.social-signin-status {
+  margin: 0;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.social-signin-failure {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.social-signin-failure .form-error {
+  margin: 0;
+}
+
+.social-signin-retry {
+  padding: 8px 14px;
+  color: var(--color-text-label);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  color: var(--color-text-secondary);
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+  content: "";
+}
+
+/* Auth-page brand: the FitAI mark above the page heading (theme tokens only) */
+.auth-brand {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.auth-brand-mark {
+  max-width: 100%;
+  height: auto;
+  color: var(--color-primary);
+}
+
+.auth-brand-name {
+  color: var(--color-text);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.auth-card .auth-brand + h1 {
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* Apple first, then Google, with even spacing */
+.social-signin-group {
+  display: grid;
+  gap: 12px;
+}

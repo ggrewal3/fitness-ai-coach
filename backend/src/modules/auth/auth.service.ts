@@ -1,8 +1,23 @@
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import { Prisma } from "../../generated/prisma/client.js";
 import prisma from "../../lib/prisma.js";
 import { RegisterUserInput, LoginUserInput } from "./auth.types.js";
+import { issueSessionToken } from "./session.js";
+
+/**
+ * A fixed, valid bcrypt hash (cost 10, same as real hashes) of a random value
+ * nobody knows. Failed logins compare against it when there is no real hash,
+ * so an unknown email or an account without a password (Google/Apple only,
+ * ADR-028) costs a bcrypt comparison like a wrong password does, instead of
+ * returning noticeably faster. This removes the obvious timing difference; it
+ * is not a constant-time guarantee.
+ */
+const DUMMY_PASSWORD_HASH = "$2b$10$9T7sfJ2Xrqzru6lCqgIcau/KRJmx39tlXsynpvwqnbHgLnsUe60Qa";
+
+const INVALID_CREDENTIALS = {
+  success: false as const,
+  message: "Invalid email or password.",
+};
 
 
 export async function registerUser(userData: RegisterUserInput) {
@@ -63,6 +78,10 @@ export async function registerUser(userData: RegisterUserInput) {
 }
 
 
+/**
+ * Password login. Every failure (unknown email, no password on the account,
+ * wrong password) returns the same response after one bcrypt comparison.
+ */
 export async function loginUser(userData: LoginUserInput) {
   const user = await prisma.user.findUnique({
     where: {
@@ -70,40 +89,23 @@ export async function loginUser(userData: LoginUserInput) {
     },
   });
 
-  if (!user) {
-    
-    return {
-      success: false,
-      message: "Invalid email or password.",
-    };
+  // Never pass null to bcrypt: accounts without a password are compared
+  // against the dummy hash and then rejected regardless of the result.
+  const passwordHash = user?.passwordHash ?? null;
+  const isPasswordCorrect = await bcrypt.compare(userData.password, passwordHash ?? DUMMY_PASSWORD_HASH);
+
+  if (!user || passwordHash === null || !isPasswordCorrect) {
+    return INVALID_CREDENTIALS;
   }
-  const isPasswordCorrect = await bcrypt.compare(
-  userData.password,
-  user.passwordHash
-);
-if (!isPasswordCorrect) {
+
   return {
-  success: false as const,
-  message: "Invalid email or password.",
-};
-}
-const token = jwt.sign(
-  {
-    userId: user.id,
-  },
-  process.env.JWT_SECRET!,
-  {
-    expiresIn: "1h",
-  }
-);
-  return {
-  success: true as const,
-  token,
-  user: {
-    id: user.id,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email,
-  },
-};
+    success: true as const,
+    token: issueSessionToken(user.id),
+    user: {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+    },
+  };
 }

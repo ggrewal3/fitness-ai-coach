@@ -22,6 +22,7 @@ Instead of acting as a generic chatbot, the AI Coach can reason over structured 
 Backend API:
 
 - User registration and login with JWT authentication and bcrypt password hashing; emails are normalized to lowercase
+- Sign in with Google (server-verified ID token, single-use nonce, the same FitAI session; accounts are never linked by matching email). Sign in with Apple (Apple's official button in popup mode, server-verified ID token, single-use nonce and state, the same FitAI session); implemented and tested offline, real Apple validation pending
 - Account settings: contact details, bio, private profile photos (signed URLs), and body-weight/workout-load/height unit preferences
 - Fitness profile management with validated fields
 - Weight check-ins, per-food-item nutrition logging, daily activity, and workout sessions
@@ -34,7 +35,7 @@ Backend API:
 
 Frontend:
 
-- Login and signup, a protected application shell with a responsive sidebar and mobile drawer
+- Login and signup with email and password or Google (when configured), a protected application shell with a responsive sidebar and mobile drawer
 - Dashboard, Progress (weight check-ins), Nutrition (with AI-assisted entry), and Workout logging with an exercise picker
 - Settings: profile photo (preview before saving, change, remove), profile and contact details, bio, fitness profile, unit preferences, appearance, connection status, and sign-out
 - Unit preferences applied across the app: body weight in kg or lb, height in cm or feet and inches, and the default unit for new workout exercises (logged sets keep their own unit)

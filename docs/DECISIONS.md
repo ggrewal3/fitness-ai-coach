@@ -42,6 +42,7 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
 | ADR-025 | The AI Coach is anchored to the client's local date and timezone | Accepted |
 | ADR-026 | AI Coach conversation context is client-held, bounded and untrusted | Accepted |
 | ADR-027 | Live AI Coach evaluation is opt-in, isolated and deterministic-first | Accepted |
+| ADR-028 | Social sign-in proves identity; FitAI owns the account and session | Accepted |
 
 ---
 
@@ -95,6 +96,10 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - A token stays valid until it expires, even after a password change or account deletion; no endpoint for either exists yet.
   - The middleware does not check that the user still exists, so services must handle a deleted user (the account routes return 404).
   - Each browser tab is a separate session.
+- **Amendment (2026-10-04, Phase 5A-1):** implementation detail only; the decision is unchanged.
+  - Token issuing and verification live in `modules/auth/session.ts` (`issueSessionToken`, `verifySessionToken`). The contract is unchanged: payload `{ userId }`, HS256, `JWT_SECRET`, valid for 1 hour.
+  - Verification is now pinned to HS256: tokens signed with any other algorithm, or unsigned, are rejected (401).
+  - Planned Google and Apple sign-in will issue this same token ([ADR-028](#adr-028-social-sign-in-proves-identity-fitai-owns-the-account-and-session)).
 
 ## ADR-005: Separate User, FitnessProfile and UserPreference
 
@@ -114,6 +119,10 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - Readers must apply defaults for missing preference rows.
   - All three cascade-delete with the user.
   - Future third-party connections (for example health platforms) should get their own model, not columns on `User`.
+- **Amendment (2026-10-04, Phase 5A-1):** extends the split; the decision is unchanged.
+  - External sign-in identities (Google, Apple) live in their own model, `AuthIdentity`, not as columns on `User` ([ADR-028](#adr-028-social-sign-in-proves-identity-fitai-owns-the-account-and-session)).
+  - The password credential stays on `User` but is now optional (`passwordHash` nullable).
+  - Sign-in identities and future health-platform connections are separate concerns and will be separate models.
 
 ## ADR-006: Canonical metric storage; units are display preferences only
 
@@ -519,3 +528,50 @@ Architecture decision records (ADRs) explaining **why** FitAI is built the way i
   - The process was used end to end: a coach-v3 baseline, targeted repeats, coach-v4 and coach-v5 hardening, and a full baseline-vs-candidate comparison, all on `gpt-5.6-terra` with fixtures `1d-a.1` and the judge off. coach-v5 was accepted.
   - Per-run reports remain git-ignored. A human-written summary with run IDs is committed at [docs/evals/AI-COACH-PHASE-1D.md](evals/AI-COACH-PHASE-1D.md).
   - Known harness limitations, kept so that the `1d-a.1` runs stay comparable: the S2 and S17 text heuristics are narrow, and synthetic foods have 0 g carbs/fat.
+
+## ADR-028: Social sign-in proves identity; FitAI owns the account and session
+
+**Status:** Accepted (2026-10-04, Phase 5A-1). **Implemented so far:** the data model, password-login safeguards, the Google sign-in backend (single-use nonce endpoint and `POST /api/auth/google`, Phase 5A-2), the Google button on Login and Signup (Phase 5A-3), the Sign in with Apple backend (`POST /api/auth/apple`, Phase 5A-4) and the Apple button on Login and Signup (Phase 5A-5). Phase 5A is closed: Google sign-in is validated against the real provider; Sign in with Apple is implemented and tested offline, with real-provider validation deferred (see the Phase 5A close amendment). **Planned (not implemented):** account linking (Phase 5B).
+
+- **Context:** Users should be able to sign up and log in with Google or Apple as well as email and password. FitAI's authorization, data scoping (ADR-013) and session (ADR-004) are built around its own `User` and JWT. FitAI has never verified email addresses (ADR-020), so an email match proves nothing about who owns a FitAI account.
+- **Decision:**
+  - **FitAI owns the account and the session; providers only prove identity.** After verifying a provider's ID token on the backend, FitAI issues its normal session token (`{ userId }`, HS256, 1 hour; `issueSessionToken`). Provider tokens are never used as FitAI sessions.
+  - **Identities are stored separately** as `AuthIdentity` rows (`provider`, `providerSubject`), unique per provider and subject, with at most one identity per provider per account. A person is recognised **only** by provider + the provider's stable `sub`; the provider email is stored for display and audit, never as a key.
+  - **Provider tokens, authorization codes and secrets are never stored** in the database (and never logged).
+  - **No automatic linking by email.** A provider identity whose email matches an existing FitAI account is not attached to it. Linking will require proof of both accounts (a signed-in FitAI session plus a fresh provider sign-in) and is deferred to Phase 5B, together with unlinking and "create password".
+  - **Password credentials are optional.** `User.passwordHash` is nullable; an account without one can never use password login. Every failed login returns the same response after one bcrypt comparison, against a fixed dummy hash when there is no real one, so the response and its timing don't reveal whether the email exists or how the account signs in.
+  - **Social sign-in and health-data permissions are independent.** "Sign in with Apple" or "Sign in with Google" never implies, requests or stores Apple Health, Health Connect or Google Fit access; any future health connection gets its own model and consent (ADR-016).
+  - Planned provider verification will check the token signature against the provider's published keys, the issuer, audience and expiry, and a server-issued, single-use, expiring nonce to block replay.
+- **Rationale:**
+  - Reusing the one FitAI session keeps the frontend, the auth middleware and per-user isolation identical for every sign-in method.
+  - A provider's `sub` is stable and unique; emails change, can be hidden (Apple's private relay) and, in FitAI, are unverified. Linking by email would let anyone who pre-registered someone's address with a password keep access after the real owner signs in with Google (pre-account takeover).
+  - A separate table keeps credentials-adjacent data out of `User` (ADR-005) and lets a user hold several providers without a column per provider.
+- **Consequences:**
+  - A person who already has a password account and then tries Google or Apple with the same email is refused rather than linked until Phase 5B exists. A person whose Apple sign-in hides their email gets a new account.
+  - `User.email` stays required and unique; social sign-up must supply a verified provider email.
+  - Account deletion (not implemented) cascades identities; revoking Apple authorization at deletion will need an Apple key at that point.
+- **Amendment (2026-10-04, Phase 5A-2):** implementation status only; the decision is unchanged.
+  - The Google backend flow is implemented as decided. Nonces are random, provider-bound, 10-minute, single-use and stored as digests in a bounded **process-local** store (a multi-instance deployment needs a shared atomic store).
+  - ID tokens are verified with `jose` against Google's published keys. New accounts need a Google-verified email, and an email collision returns `409 EMAIL_IN_USE` without creating or linking anything.
+  - The new-account name falls back to "FitAI Member" when Google gives none.
+  - Unauthenticated `/api/auth/*` endpoints are rate-limited per IP, also process-local.
+- **Amendment (2026-10-04, Phase 5A-3):** implementation status only; the decision is unchanged.
+  - Login and Signup show Google's own button, loaded lazily from Google Identity Services, when `VITE_GOOGLE_CLIENT_ID` is set. That is the same public web client ID as the backend's `GOOGLE_CLIENT_ID`, and there is no client secret.
+  - The browser holds Google's credential and the nonce only in memory for one request, and stores only the FitAI JWT, through the same path as password login.
+  - A nonce is fetched before each attempt's button initialization and spent on the first credential.
+  - A 401 from a sign-in endpoint no longer counts as an expired session in the frontend.
+- **Amendment (2026-10-04, Phase 5A-4):** implementation status only; the decision is unchanged.
+  - Sign in with Apple is implemented in the backend with ID-token verification only, against Apple's published keys with audience `APPLE_CLIENT_ID` (the public Services ID). There is no authorization-code exchange, client secret, private key or stored Apple token.
+  - Apple's `sub` is the identity key. A returning identity needs neither email nor name.
+  - A new account needs a verified email from the signed token (private-relay addresses included, flagged `isPrivateEmail`); without one the request is refused (`missing_email`), and no email is invented.
+  - The name Apple gives the browser on first authorization is unsigned and only names a new account.
+  - Google and Apple share one verification core and one resolution path. Email collisions return `409 EMAIL_IN_USE`, including against Google-created accounts.
+  - No Apple Health or other health permission is involved.
+- **Amendment (2026-10-04, Phase 5A-5):** implementation status only; the decision is unchanged.
+  - Login and Signup show Apple's official button (Apple JS, popup mode), loaded lazily only when `VITE_APPLE_CLIENT_ID` and an HTTPS `VITE_APPLE_REDIRECT_URI` are set. Both are public; there is still no client secret, private key or code exchange.
+  - Each attempt uses a fresh single-use nonce and a random `state`, both in memory only. The `state` is checked before anything reaches FitAI.
+  - Only the ID token, nonce and first-authorization name are sent; the browser's view of email, `sub` and the relay flag is ignored. The name is kept in memory for a same-tab retry by the same Apple account and never stored.
+  - The missing-email 401 now carries `code: "MISSING_EMAIL"` (additive) so the client can explain it.
+- **Amendment (2026-10-04, Phase 5A close):** validation status only; the decision is unchanged.
+  - **Google:** validated against the real provider on a local development setup. A first sign-in created one password-less account with one Google identity; signing out and in again resolved the same account and identity, with no duplicate. No provider token, nonce or authorization code was stored.
+  - **Apple:** the backend and frontend are implemented and covered by offline tests and stubbed browser QA. Real-provider validation is **deferred** because Apple Developer enrollment is pending; no defect is known. Before Apple sign-in is enabled in any environment, it needs one real sign-in on a registered HTTPS domain, which also confirms Apple JS behavior that can't be checked offline (see ARCHITECTURE.md).

@@ -1,6 +1,6 @@
 # FitAI Database
 
-Last reviewed: 2026-10-01
+Last reviewed: 2026-10-04
 
 PostgreSQL 17 accessed through Prisma 7. **`backend/prisma/schema.prisma` is the executable source of truth**; this document explains its design and invariants. The reasons behind it are in [DECISIONS.md](DECISIONS.md).
 
@@ -9,6 +9,7 @@ PostgreSQL 17 accessed through Prisma 7. **`backend/prisma/schema.prisma` is the
 ```text
 User ─┬─ 0..1 FitnessProfile
       ├─ 0..1 UserPreference
+      ├─ 0..2 AuthIdentity           (≤ 1 per provider: GOOGLE, APPLE)
       ├─ 0..* WeightCheckIn
       ├─ 0..* NutritionFoodItem
       ├─ 0..* DailyActivity          (≤ 1 per activityDate)
@@ -22,7 +23,8 @@ User ─┬─ 0..1 FitnessProfile
 
 | Model | Responsibility | Key constraints and indexes |
 |---|---|---|
-| `User` | Identity and credentials (`email`, bcrypt `passwordHash`), names, optional contact details (`phone`, `countryCode`, `bio`), and `avatarKey`: the opaque private storage key of the profile photo (null when none) | `email` unique, always stored trimmed and lower-case |
+| `User` | Identity and credentials (`email`, bcrypt `passwordHash`, **nullable**: null for accounts that sign in only with Google or Apple), names, optional contact details (`phone`, `countryCode`, `bio`), and `avatarKey`: the opaque private storage key of the profile photo (null when none) | `email` unique, always stored trimmed and lower-case |
+| `AuthIdentity` | An external sign-in identity ([ADR-028](DECISIONS.md#adr-028-social-sign-in-proves-identity-fitai-owns-the-account-and-session)): `provider`, `providerSubject` (the provider's stable `sub`), the provider `email` last seen (display and audit only), `isPrivateEmail` (Apple relay), `createdAt`, `lastUsedAt`. **No provider tokens, codes or secrets are stored** | **unique `(provider, providerSubject)`**; **unique `(userId, provider)`** (one per provider per account); index `userId` |
 | `FitnessProfile` | Optional coaching context: `dateOfBirth`, `heightCm`, `targetWeightKg`, `goal`, `activityLevel`, `dietPreference`, `medicalNotes` | `userId` unique (1:1) |
 | `UserPreference` | Optional display/input units: `bodyWeightUnit` (default KG), `workoutLoadUnit` (default LB), `heightUnit` (default CM) | `userId` unique (1:1). No row means the defaults; created on the first preferences update |
 | `WeightCheckIn` | One body-weight measurement (`weightKg`, `recordedAt`) | index `(userId, recordedAt)` |
@@ -47,6 +49,7 @@ User ─┬─ 0..1 FitnessProfile
 | `LoadUnit` | `KG`, `LB` (for workout sets) |
 | `WeightUnit` | `KG`, `LB` (for preferences) |
 | `HeightUnit` | `CM`, `FT_IN` (for preferences) |
+| `AuthProvider` | `GOOGLE`, `APPLE` (sign-in identities) |
 
 `LoadUnit` and `WeightUnit` have the same values but are separate on purpose: one describes stored data, the other a display preference.
 
@@ -54,7 +57,7 @@ Country codes are validated in application code (`account/countryCodes.ts`), not
 
 ## Ownership and delete behavior
 
-- Every user-owned table has `userId` with `ON DELETE CASCADE`. **Deleting a `User` deletes all of their data:** profile, preference, check-ins, food items, activity, custom exercises, and workouts with their exercises and sets. No account-deletion endpoint exists yet; the cascade is exercised in tests.
+- Every user-owned table has `userId` with `ON DELETE CASCADE`. **Deleting a `User` deletes all of their data:** profile, preference, sign-in identities, check-ins, food items, activity, custom exercises, and workouts with their exercises and sets. No account-deletion endpoint exists yet; the cascade is exercised in tests.
 - `WorkoutExercise → WorkoutSession` and `WorkoutSet → WorkoutExercise` cascade.
 - `WorkoutExercise → Exercise` is `ON DELETE NO ACTION`, checked at the end of the statement. An exercise still used by a workout cannot be deleted on its own, but deleting a user removes their workouts and custom exercises in the same statement without conflict.
 - A workout may only reference built-ins or **its owner's** custom exercises. The service layer enforces this (`assertExercisesVisible`); the database does not.
@@ -91,6 +94,8 @@ The API enforces these. Keep them if you add writers (seeds, scripts, future AI 
 7. `DailyActivity.source` is always `MANUAL`; the API cannot set it. No implemented frontend flow produces `NutritionFoodItem.source = AI_PHOTO`, although the API accepts the value from clients.
 8. Unit preferences and `UserPreference` rows never trigger data rewrites.
 9. `User.avatarKey` is either null or a server-generated `avatars/<uuid>.webp` key. It is written only by the avatar service: store the object first, then swap the key under a row lock. It is never returned by the API; clients get a signed `avatarUrl`. It never stores image data, filenames or URLs.
+10. A user with `passwordHash` null can never log in with a password; password login rejects them like any failed login. Registration always sets a bcrypt hash.
+11. An `AuthIdentity` is found only by `(provider, providerSubject)`. Its `email` is never used to find or link an account, and identities are never created by matching emails (ADR-028).
 
 ## Migrations
 

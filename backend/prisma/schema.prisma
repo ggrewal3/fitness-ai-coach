@@ -74,13 +74,20 @@ enum HeightUnit {
   FT_IN
 }
 
+enum AuthProvider {
+  GOOGLE
+  APPLE
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   firstName    String
   lastName     String
   // Always stored trimmed and lower-cased (normalized at register/login).
   email        String   @unique
-  passwordHash String
+  // bcrypt hash of the password; null for accounts that sign in only with
+  // Google or Apple (ADR-028), which can then never use password login.
+  passwordHash String?
   // Optional contact details: E.164-style phone, ISO 3166-1 alpha-2 country.
   phone        String?
   countryCode  String?
@@ -99,6 +106,31 @@ model User {
   dailyActivities DailyActivity[]
   workoutSessions WorkoutSession[]
   exercises       Exercise[]
+  authIdentities  AuthIdentity[]
+}
+
+// External sign-in identity (ADR-028): the provider proves who the person is;
+// FitAI owns the account and the session. Identified ONLY by provider +
+// providerSubject (the provider's stable `sub`), never by email. No provider
+// tokens or secrets are ever stored.
+model AuthIdentity {
+  id              Int          @id @default(autoincrement())
+  userId          Int
+  provider        AuthProvider
+  providerSubject String
+  // Provider email when last seen (normalized); for display and audit only,
+  // never a lookup or linking key. May be an Apple private-relay address.
+  email           String?
+  isPrivateEmail  Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  lastUsedAt      DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSubject])
+  // At most one identity per provider for each FitAI account.
+  @@unique([userId, provider])
+  @@index([userId])
 }
 
 model FitnessProfile {

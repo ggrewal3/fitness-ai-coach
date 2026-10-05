@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import AuthBrand from '../components/auth/AuthBrand'
+import SocialSignIn from '../components/auth/SocialSignIn'
 import { useAuth } from '../context/useAuth'
+import type { SocialSignInError } from '../features/auth/socialShared'
 import { ApiRequestError } from '../services/api'
 
 function getErrorMessage(error: unknown) {
@@ -20,10 +23,13 @@ function SignupPage() {
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSocialBusy, setIsSocialBusy] = useState(false)
+  const [socialError, setSocialError] = useState<SocialSignInError | null>(null)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setErrorMessage(null)
+    setSocialError(null)
     setIsSubmitting(true)
 
     try {
@@ -42,7 +48,7 @@ function SignupPage() {
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <p className="header-label">AI Fitness Coach</p>
+        <AuthBrand />
         <h1>Create your account</h1>
 
         {errorMessage && (
@@ -50,6 +56,29 @@ function SignupPage() {
             {errorMessage}
           </p>
         )}
+
+        {socialError && (
+          <p className="form-error" role="alert">
+            {socialError.message}
+            {socialError.kind === 'email_in_use' && (
+              <>
+                {' '}
+                <Link to="/login">Go to Log in</Link>
+              </>
+            )}
+          </p>
+        )}
+
+        <SocialSignIn
+          mode="signup"
+          onBusyChange={setIsSocialBusy}
+          onError={(error) => {
+            setErrorMessage(null)
+            setSocialError(error)
+          }}
+          // Google signs the user in directly (new or existing account), unlike password sign-up.
+          onSuccess={() => navigate('/', { replace: true })}
+        />
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <label>
@@ -97,7 +126,7 @@ function SignupPage() {
             />
           </label>
 
-          <button type="submit" disabled={isSubmitting}>
+          <button type="submit" disabled={isSubmitting || isSocialBusy}>
             {isSubmitting ? 'Creating account...' : 'Create account'}
           </button>
         </form>

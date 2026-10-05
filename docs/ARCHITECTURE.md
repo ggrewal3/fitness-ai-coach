@@ -65,7 +65,7 @@ Most request schemas are `.strict()`, so unknown keys are rejected. Exceptions: 
 
 ### Cross-cutting gaps (implemented today = absent)
 
-The app sets `cors({ exposedHeaders: ["Retry-After"] })`, with no origin restriction and only `Retry-After` exposed to browser JavaScript (for the AI Coach's 429 countdown), and `express.json()` with the default body-size limit (only `PUT /api/account/avatar` adds a route-scoped raw image parser). The only rate limit is the per-user, in-memory limit on `POST /api/ai/coach` (`middleware/userRateLimit.middleware.ts`; a multi-instance deployment would need a shared store). There is no other rate limiting (including avatar-upload throttling), no security-header middleware, no session or token revocation, no refresh tokens, and no structured logger: logging is `console.*`, with AI events logged as objects.
+The app sets `cors({ exposedHeaders: ["Retry-After"] })`, with no origin restriction and only `Retry-After` exposed to browser JavaScript (for the AI Coach's 429 countdown), and `express.json()` with the default body-size limit (only `PUT /api/account/avatar` adds a route-scoped raw image parser). Rate limits are in process memory (`middleware/userRateLimit.middleware.ts`; a multi-instance deployment would need a shared store): per user on `POST /api/ai/coach`, and per client IP on the `/api/auth/*` endpoints (a reverse proxy would need Express's "trust proxy" setting so `req.ip` is the client). There is no other rate limiting (including avatar-upload throttling), no security-header middleware, no session or token revocation, no refresh tokens, and no structured logger: logging is `console.*`, with AI and social sign-in events logged as objects. A request body that isn't valid JSON gets a JSON 400 from an app-level handler, which never logs the body (the default handler would print a fragment of it).
 
 ## 3. Authentication
 
@@ -73,25 +73,51 @@ The app sets `cors({ exposedHeaders: ["Retry-After"] })`, with no origin restric
   - Emails are trimmed and lower-cased at both register and login, so lookups are effectively case-insensitive.
   - Passwords must be at least 8 characters and **at most 72 UTF-8 bytes**, because bcrypt ignores bytes beyond 72. Login does not apply the maximum.
   - Registration does not log the user in.
-- `POST /api/auth/login` returns `{ token, user }`. The token is a JWT `{ userId }` signed with `JWT_SECRET`, expiring after **1 hour**. Failed logins return the same 401 message whether the email or the password was wrong.
+- `POST /api/auth/login` returns `{ token, user }`. The token is a JWT `{ userId }` signed with `JWT_SECRET` (HS256), expiring after **1 hour**; `modules/auth/session.ts` (`issueSessionToken`, `verifySessionToken`) is the only place tokens are issued and verified, and verification accepts HS256 only.
+  - Every failure (unknown email, wrong password, or an account without a password) returns the same 401 message after one bcrypt comparison; when there is no real hash, a fixed dummy hash is compared, so failures don't differ noticeably in timing either.
+- **Social sign-in (ADR-028):** Google and Apple sign-in work end to end: the backend endpoints (`POST /api/auth/nonce`, `POST /api/auth/google`, `POST /api/auth/apple`; see API.md) and the provider buttons on the Login and Signup pages (Frontend below). Account linking is not built.
+  - **Nonce:** `modules/auth/social/nonceStore.ts` issues random, provider-bound, 10-minute nonces and keeps only their SHA-256 digests (at most 10,000; expired entries are swept every minute, the oldest evicted beyond the cap). A nonce is consumed by a synchronous get-and-delete, so it works once even under concurrent requests. **The store is process-local**: a multi-instance deployment needs a shared atomic store (e.g. Redis or a database row).
+  - **Verification:** `social/providerToken.ts` holds the shared core (RS256 only, issuer, audience, `exp`/`nbf`/`iat` with 60 s tolerance, required `sub`, constant-time nonce comparison). `social/googleIdToken.ts` and `social/appleIdToken.ts` add each provider's keys, issuer and claims. Apple's `email_verified` / `is_private_email` count only as `true` or `"true"`. Apple's name isn't in the token; it arrives as unsigned request data and is used only to name a new account. The Google verifier checks the ID token with `jose` against Google's published keys (RS256 only; issuer, audience, expiry, issued-at, `sub`, nonce). Errors carry only a category: jose errors contain the token's claims and are never logged or returned. Tests swap only the key source (`setGoogleKeyResolver`) to locally generated keys.
+  - **Resolution:** `social/socialSignIn.service.ts` finds the person by provider + `sub` only. An unknown identity becomes a new password-less account, in one write together with its `AuthIdentity`, if its verified email is free; otherwise `409 EMAIL_IN_USE`, never a link. Losing a first-sign-in race (P2002) re-reads the identity and logs in.
+  - **Controller:** one sign-in flow for every provider (`socialSignIn` in `auth.controller.ts`); each provider only supplies its client ID, verifier and wording.
+  - **Session:** success issues the same session token as password login (`issueSessionToken`). An unset `GOOGLE_CLIENT_ID` or `APPLE_CLIENT_ID` makes that provider return 503; the others are unaffected.
+  - **No email, no account:** a new identity without a usable email gets `missing_email` (401, `code: "MISSING_EMAIL"`); no placeholder email is ever created.
+  - **Apple:** Apple private-relay emails are ordinary account emails, flagged on the identity. Sending mail to them later will require configuring Apple's private email relay. No Apple authorization code, client secret or token is used or stored.
+  - **Logs:** `{ event: "auth.social", provider, outcome, latencyMs, userId? }`, with `userId` only on success; outcomes include `missing_email`. Never the token, nonce, `sub`, email (including relay addresses) or names.
 - **Frontend:**
   - The token is kept in `sessionStorage` under `fitai.auth.token` (see `frontend/src/services/api.ts`), so it is per-tab and cleared when the tab closes.
   - `AuthProvider` (`context/AuthContext.tsx`) exposes `useAuth()`.
-  - Every request goes through `request()` in `services/api.ts`, which attaches the token. On any 401 it clears the token and calls the registered handler, which logs the user out.
+  - Every request goes through `request()` in `services/api.ts`, which attaches the token. On a 401 from an authenticated call it clears the token and calls the registered handler, which logs the user out. The sign-in endpoints (login, register, nonce, Google, Apple) opt out (`endsSessionOn401: false`): a 401 there means the credentials or Google account couldn't be verified, not that a session expired.
+  - **Auth pages:** Login and Signup show the FitAI mark and name (`components/auth/AuthBrand.tsx`, reusing `brand/FitAIMark`; decorative, so screen readers hear the page heading), then the social section (`components/auth/SocialSignIn.tsx`: Apple, then Google, then an "or" divider), then the password form. A provider that isn't configured is left out; with neither, there is no social section or divider. Only one social sign-in can be verified at a time (a shared busy flag).
+    - Shared pieces live in `features/auth/socialShared.ts`: the lazy script loader, the nonce slot and the mapping from failures to short, provider-specific messages. Provider configuration is read once in `features/auth/socialConfig.ts`.
+  - **Google sign-in** (`components/auth/GoogleSignIn.tsx`, `features/auth/googleIdentity.ts`): shown only when `VITE_GOOGLE_CLIENT_ID` is set.
+    - Google Identity Services (`accounts.google.com/gsi/client`) is loaded lazily, once (a failed load can be retried). It uses Google's own button in popup mode, with no One Tap or automatic sign-in, in Google's light or dark style to match the theme.
+    - **Nonce:** GIS takes the nonce in `initialize()`, before the button can be clicked. So a fresh single-use nonce is fetched when the button is prepared, again after every attempt and about a minute before it expires, re-initializing GIS each time. A nonce is spent as soon as Google returns a credential; duplicate callbacks are ignored (`createNonceSlot`).
+    - **Session:** the credential and nonce live only in memory for that one request. Success goes through `acceptSession`, the same path as password login, which stores only FitAI's JWT.
+    - **Errors:** short messages for verification failure, `EMAIL_IN_USE` (focuses the email field on Login, links to Log in on Signup), 429, 503 and script or network failure. A closed popup shows nothing.
+    - Signing in with Google requests only basic profile (`openid email profile`), never health or fitness data.
+  - **Apple sign-in** (`components/auth/AppleSignIn.tsx`, `features/auth/appleSignIn.ts`): shown only when `VITE_APPLE_CLIENT_ID` and an `https://` `VITE_APPLE_REDIRECT_URI` are set; otherwise Apple JS is never loaded.
+    - Apple JS (`appleid.cdn-apple.com/.../appleid.auth.js`) is loaded lazily, once (a failed load can be retried). It renders Apple's official button into `#appleid-signin` (black on light, white on dark, re-rendered when the theme changes) and runs in popup mode with scope `name email`. FitAI listens for Apple's `AppleIDSignInOnSuccess` / `AppleIDSignInOnFailure` events.
+    - **State and nonce:** like GIS, Apple JS takes them in `init()`, before the click. Each attempt gets a fresh server nonce (`APPLE`) and a 32-byte random `state`, prepared again after every attempt and shortly before the nonce expires. When Apple answers, the returned `state` is compared (constant time) **before** anything is sent to FitAI; a mismatch sends nothing and shows a generic error. The attempt is spent on any answer, so a state or nonce is never reused and duplicate events are ignored (`createAppleAttemptSlot`). Both live only in memory.
+    - **Request:** only Apple's `id_token`, the nonce and the first-authorization name go to `POST /api/auth/apple`. The authorization code, and the email, `sub` and relay flag Apple shows the browser, are ignored; the backend reads identity only from the verified token. Success goes through `acceptSession`.
+    - **First-authorization name:** Apple sends it only once. If the FitAI request then fails, the name is kept in module memory (never storage) and re-sent on a retry in the same tab, but only for the same Apple account (matched by the token's `sub`, read unverified for this purpose alone). It is forgotten after a successful sign-in and lost on reload. A returning sign-in needs no name.
+    - **Errors:** short messages for verification failure, missing email (explains removing FitAI under Apple ID settings), `EMAIL_IN_USE` (as for Google), 429, 503, state mismatch and script or popup failure. A closed or declined popup shows nothing.
+    - **Real-provider validation is deferred** (Apple Developer enrollment pending; ADR-028). Not verifiable offline: real Apple JS behavior on repeated `init()` and button re-rendering. A real-Apple test needs an HTTPS domain registered on the Services ID.
   - **Signing out** (explicit logout or a 401) calls `clearUserSessionData()`: it removes the token and every `sessionStorage` key starting with `fitai.user.` (`features/auth/userSession.ts`). Features keep per-tab, per-user data under that prefix (today: the AI Coach conversation) without the auth layer knowing about them.
-  - `ApiRequestError` carries the HTTP status, field errors and `retryAfterSeconds` (from a readable `Retry-After` header).
+  - `ApiRequestError` carries the HTTP status, field errors, `retryAfterSeconds` (from a readable `Retry-After` header) and the body's `code`, if any.
   - `ProtectedRoute` redirects unauthenticated users to `/login`.
-- There is no email verification, password change or reset, account deletion, session revocation, OAuth or rate limiting. Email cannot be changed.
+- There is no email verification, password change or reset, account deletion, session revocation or account linking. Email cannot be changed.
 
 ## 4. User, account and preferences
 
-User data is deliberately split across three models (see [ADR-005](DECISIONS.md#adr-005-separate-user-fitnessprofile-and-userpreference)):
+User data is deliberately split across these models (see [ADR-005](DECISIONS.md#adr-005-separate-user-fitnessprofile-and-userpreference)):
 
 | Model | Holds | API |
 |---|---|---|
-| `User` | Identity and credentials (`email`, `passwordHash`) plus contact/profile details (`firstName`, `lastName`, `phone`, `countryCode`, `bio`) and the private profile-photo storage key (`avatarKey`) | `/api/auth/*`, `/api/account` |
+| `User` | Identity and credentials (`email`; `passwordHash`, null for accounts without a password) plus contact/profile details (`firstName`, `lastName`, `phone`, `countryCode`, `bio`) and the private profile-photo storage key (`avatarKey`) | `/api/auth/*`, `/api/account` |
 | `FitnessProfile` (optional 1:1) | Coaching context: date of birth, height, target weight, goal, activity level, diet preference, medical notes | `/api/profile` |
 | `UserPreference` (optional 1:1) | Display/input units: `bodyWeightUnit`, `workoutLoadUnit`, `heightUnit` | `/api/account/preferences` |
+| `AuthIdentity` (0..1 per provider) | External sign-in identities: `provider` (GOOGLE, APPLE) + `providerSubject`, last-seen provider email, private-relay flag ([ADR-028](DECISIONS.md#adr-028-social-sign-in-proves-identity-fitai-owns-the-account-and-session)). Never provider tokens | None yet (sign-in endpoints planned) |
 
 - **Account** (`modules/account`):
   - `GET /api/account` returns identity, contact details and preferences. If the user has no `UserPreference` row it returns the defaults (KG / LB / CM) and does **not** create one.
@@ -232,7 +258,7 @@ frontend/src/
   - Behind `ProtectedRoute` + `AppLayout`: `/` (Dashboard), `/progress`, `/nutrition`, `/workout`, `/workout/new`, `/workout/:id/edit`, `/ai-coach`, `/settings`.
 - **State:** React state and context only, with no global state library. Pages load data inside `useEffect` with an `isCurrent` guard against stale responses.
 - **Layout:** desktop sidebar; at ≤767px the sidebar becomes an off-canvas drawer (`MOBILE_NAV_QUERY` in `AppLayout.tsx` must match the CSS media query). Other breakpoints: 1100, 900 and 640px.
-- **API errors:** `ApiRequestError` carries `status` and the backend's `errors[]` so forms can map field errors.
+- **API errors:** `ApiRequestError` carries `status`, the backend's `errors[]` (so forms can map field errors), `retryAfterSeconds` and a machine-readable `code` (e.g. `EMAIL_IN_USE`).
 - **Workout editor:**
   - It is a page (`/workout/new?date=`, `/workout/:id/edit`), not a modal ([ADR-014](DECISIONS.md#adr-014-the-workout-editor-is-a-page-not-a-modal)).
   - It edits a single `WorkoutDraft` through `workoutDraftReducer` ([ADR-015](DECISIONS.md#adr-015-a-single-shared-workoutdraft-model-for-workout-entry)). Saving converts the draft into the API payload; editing sends the full exercise list, which the server uses for its replace semantics.
@@ -366,3 +392,4 @@ Before merging, check that a change doesn't break any of these:
 10. Theme preference is browser-local; `data-theme` holds only a resolved theme; colours come only from tokens.
 11. Media objects are private. The database stores only opaque keys (never URLs or image data), clients see only signed, expiring URLs, and an object is deleted only after the database stopped referencing it.
 12. Deleting a `User` row does **not** delete their stored objects. Any account-deletion feature must explicitly delete the user's avatar object (ADR-024).
+13. A sign-in identity is recognised only by provider + subject, never by email, and is never linked to an account by matching emails. Provider tokens are never stored. Every sign-in method ends in the same FitAI JWT, and an account without a password can never use password login (ADR-028).

@@ -1,6 +1,6 @@
 # FitAI HTTP API
 
-Last reviewed: 2026-10-01
+Last reviewed: 2026-10-04
 
 An engineering reference for the API as implemented. The Zod schemas in `backend/src/modules/*/*.schemas.ts` are the executable source of truth for exact limits; this document records the contracts and behavior that matter.
 
@@ -19,6 +19,7 @@ An engineering reference for the API as implemented. The Zod schemas in `backend
   - Invalid numeric `:id` params return `400` with a specific message, e.g. "Invalid workout session ID."
 - **"Strict"** means unknown keys are rejected. **"Partial"** means any subset of fields, with at least one required.
 - **Timestamps** (`recordedAt`) are ISO-8601 with an offset. **Logical dates** (`entryDate`, `workoutDate`) are `YYYY-MM-DD`.
+- **Malformed JSON:** a body that isn't valid JSON returns `400 {"message":"Request body must be valid JSON."}`; the body is never logged.
 - **Unexpected errors:** `500 {"message":"Internal Server Error"}`.
 
 ## Health and diagnostics
@@ -34,13 +35,62 @@ An engineering reference for the API as implemented. The Zod schemas in `backend
 |---|---|---|---|---|
 | POST | `/api/auth/register` | No | `firstName`, `lastName` (non-empty), `email`, `password` | `201` user: `{ id, firstName, lastName, email, createdAt, updatedAt }` |
 | POST | `/api/auth/login` | No | `email`, `password` | `200 { token, user: { id, firstName, lastName, email } }` |
+| POST | `/api/auth/nonce` | No | strict: `provider` (`GOOGLE` or `APPLE`) | `201 { provider, nonce, expiresAt }` |
+| POST | `/api/auth/google` | No | strict: `credential` (Google ID token, ≤ 8,192 chars), `nonce` (≤ 128) | `200 { token, user: { id, firstName, lastName, email }, isNewUser }` |
+| POST | `/api/auth/apple` | No | strict: `idToken` (Apple ID token, ≤ 8,192 chars), `nonce` (≤ 128), optional `firstName`, `lastName` (≤ 200 each) | `200 { token, user: { id, firstName, lastName, email }, isNewUser }` |
 
 - **Email:** trimmed, lower-cased, and must be a valid email address.
 - **Register password:** at least 8 characters and at most **72 UTF-8 bytes** (bcrypt limit; multibyte characters count more than once).
-- **Errors:** registering a duplicate email, including case variants, returns `409 {"message":"Email already registered."}`. A bad login returns `401 {"message":"Invalid email or password."}`, whichever part was wrong.
-- **Token:** JWT with `userId`, expiring after 1 hour.
+- **Errors:** registering a duplicate email, including case variants, returns `409 {"message":"Email already registered."}`. A bad login returns `401 {"message":"Invalid email or password."}`, whichever part was wrong, including for accounts that have no password (future Google/Apple-only accounts, ADR-028).
+- **Token:** JWT `{ userId }` signed HS256, expiring after 1 hour. Protected routes accept only HS256-signed tokens.
 - **Strictness:** these bodies are not strict; unknown keys are stripped. Registering does not return a token.
-- **Not implemented:** logout (client-side only), refresh, password change or reset, email verification, account deletion.
+- **Rate limits (per client IP, in process memory):** each endpoint has its own bucket, checked before validation, so invalid requests count too. Over the limit: `429 {"message":"Too many attempts. Please wait a moment and try again."}` with `Retry-After` (seconds).
+
+  | Endpoint | Per minute | Per hour |
+  |---|---|---|
+  | `register` | 5 | 30 |
+  | `login` | 10 | 100 |
+  | `nonce` | 20 | 200 |
+  | `google` | 10 | 100 |
+  | `apple` | 10 | 100 |
+
+- **Google sign-in ([ADR-028](DECISIONS.md#adr-028-social-sign-in-proves-identity-fitai-owns-the-account-and-session)):** used by the Login and Signup pages. The frontend treats a 401 from these sign-in endpoints as a failed sign-in, not an expired session.
+  1. `POST /api/auth/nonce` with `{ "provider": "GOOGLE" }` returns a random nonce, valid for 10 minutes and usable **once**. The client passes it to Google Identity Services.
+  2. `POST /api/auth/google` sends Google's ID token (`credential`) and that nonce. The nonce is consumed first, whatever happens next. The token must be RS256-signed by Google, from issuer `https://accounts.google.com` or `accounts.google.com`, for audience `GOOGLE_CLIENT_ID`, unexpired (60 s clock tolerance), not issued in the future, with a `sub` and the same `nonce`.
+  3. A known Google identity (provider + `sub`) logs in, even if its Google email changed or is missing. The account's email is never changed.
+  4. An unknown identity creates a new account with no password. This needs a Google-verified email (`email_verified: true`), normalized like registration. The name comes from `given_name` / `family_name`, else the placeholder "FitAI Member". Then `isNewUser: true`.
+  - **Errors:**
+    - `400` validation;
+    - `401 {"message":"We couldn't verify your Google account. Please try again."}` for any token or nonce failure;
+    - `401` with an explanation when a new account's Google email isn't verified (with `"code":"MISSING_EMAIL"` if the token has no email at all);
+    - `409 {"code":"EMAIL_IN_USE","message":"An account with this email already exists. Sign in the way you usually do, for example with your password."}`: nothing is created or linked, and accounts are never linked by email;
+    - `503 {"message":"Google sign-in is unavailable right now."}` when `GOOGLE_CLIENT_ID` is unset or Google's keys can't be fetched (the nonce endpoint also returns 503 when it is unset);
+    - `429` rate limit.
+  - **Success** returns the same session token as password login.
+- **Sign in with Apple ([ADR-028](DECISIONS.md#adr-028-social-sign-in-proves-identity-fitai-owns-the-account-and-session)):** used by the Login and Signup pages (Apple JS, popup mode). As for Google, a 401 here is a failed sign-in, not an expired session.
+  1. Get a nonce with `{ "provider": "APPLE" }`.
+  2. Send Apple's ID token (`idToken`) and that nonce to `POST /api/auth/apple`, plus the name Apple gives the browser on the first authorization, if any. The nonce is consumed first.
+  3. The token is checked server-side:
+     - RS256 against Apple's published keys;
+     - issuer `https://appleid.apple.com`, audience `APPLE_CLIENT_ID` (the Services ID);
+     - `exp` and `iat` required and not in the future, `nbf` if present, 60 s tolerance;
+     - a non-empty `sub` of at most 255 characters;
+     - the same `nonce`.
+  4. `email_verified` and `is_private_email` count only as `true` or `"true"`.
+  - **Identity:** the person is recognised **only** by provider + `sub`. A returning identity needs neither email nor name, and its account's email and names never change. Its stored provider email (and relay flag) refreshes only from a verified email in the token.
+  - **New account:** needs a verified email from the token. Apple private-relay addresses (`…@privaterelay.appleid.com`) are accepted normally and stored with `isPrivateEmail: true`.
+  - **Names:** `firstName` / `lastName` are unsigned profile data, used only to name a new account (cleaned and cut to 50; a missing part becomes "FitAI" / "Member"). They are never used to find or link an account.
+  - **Errors:**
+    - `400` validation;
+    - `401 {"message":"We couldn't verify your Apple account. Please try again."}` for any token or nonce failure;
+    - `401 {"code":"MISSING_EMAIL","message":"Apple didn't share the email address FitAI needs to create your account."}` when an unknown identity has no usable email. FitAI never invents one. Removing FitAI under Apple ID → Sign in with Apple and authorizing again *may* make Apple share it;
+    - `401` when a new account's email isn't verified;
+    - `409 EMAIL_IN_USE` as for Google, including when the email belongs to a Google-created account; nothing is linked;
+    - `503 {"message":"Apple sign-in is unavailable right now."}` when `APPLE_CLIENT_ID` is unset or Apple's keys can't be fetched (the APPLE nonce is also 503 then);
+    - `429` rate limit.
+  - **Success:** `200 { token, user, isNewUser }`, the same FitAI session as every other sign-in.
+  - **Not done:** no authorization code is accepted or exchanged, and there is no Apple client secret, refresh token or revocation.
+- **Not implemented:** account linking, logout (client-side only), refresh, password change or reset, email verification, account deletion.
 
 ## Account and settings (`modules/account`)
 
@@ -73,7 +123,7 @@ An engineering reference for the API as implemented. The Zod schemas in `backend
     - `400 {"message":…}` for empty, corrupt, truncated or disguised files, or images over 8000 px per side or 40 MP.
     - `503` when storing fails; the previous photo is kept.
     - `401`, and `404` if the user no longer exists.
-  - A body sent as `application/json` that isn't valid JSON is rejected with `400` by the app-wide JSON parser, as on every route.
+  - A body sent as `application/json` that isn't valid JSON is rejected with `400` by the app-wide JSON parser, as on every route (see Conventions).
 - **Profile photo removal** (`DELETE /api/account/avatar`): clears the photo first, then deletes the stored object (best effort). Calling it with no photo also returns `200`.
 - Changing preferences **never converts stored data** (see [DATABASE.md](DATABASE.md#canonical-units)).
 

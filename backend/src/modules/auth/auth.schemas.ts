@@ -8,7 +8,7 @@ export const PASSWORD_MAX_BYTES = 72;
 
 // Emails are stored trimmed and lower-cased, so lookups are case-insensitive
 // through normalization.
-const emailSchema = z
+export const emailSchema = z
   .string()
   .trim()
   .toLowerCase()
@@ -31,3 +31,36 @@ export const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, "Password is required."),
 });
+
+/** Providers that can issue sign-in nonces. */
+export const nonceRequestSchema = z
+  .object({
+    provider: z.enum(["GOOGLE", "APPLE"]),
+  })
+  .strict();
+
+// Only what the backend needs: the provider's ID token and the nonce FitAI
+// issued for it. Identity claims come from the signed token alone.
+const credentialSchema = z.string().min(1, "Credential is required.").max(8192, "Credential is too long.");
+const nonceSchema = z.string().min(1, "Nonce is required.").max(128, "Nonce is too long.");
+
+export const googleSignInSchema = z
+  .object({
+    credential: credentialSchema,
+    nonce: nonceSchema,
+  })
+  .strict();
+
+// Apple's first authorization also sends the user's name to the browser (it
+// is not in the signed token). Bounded here; trimmed and cut to the account
+// name rules when a new account is created. Never identity evidence.
+const appleNameSchema = z.string().max(200, "Name is too long.").optional();
+
+export const appleSignInSchema = z
+  .object({
+    idToken: credentialSchema,
+    nonce: nonceSchema,
+    firstName: appleNameSchema,
+    lastName: appleNameSchema,
+  })
+  .strict();
